@@ -1,12 +1,17 @@
 import Foundation
 
-public struct EmailAddress: Decodable {
+public struct EmailAddress: Codable {
     public let name: String?
     public let address: String
 
     enum CodingKeys: String, CodingKey {
         case name = "Name"
         case address = "Address"
+    }
+
+    public init(name: String? = nil, address: String) {
+        self.name = name
+        self.address = address
     }
 }
 
@@ -93,6 +98,59 @@ public struct FullMessage: Decodable {
     public var senderName: String { sender.name ?? sender.address }
     public var senderAddress: String { sender.address }
 }
+
+// MARK: - Send models
+
+public struct SendPackage: Encodable {
+    public let addresses: [String: SendAddress]
+    public let mimeType: String
+    public let body: String
+    public let packageType: Int
+
+    enum CodingKeys: String, CodingKey {
+        case addresses = "Addresses"
+        case mimeType = "MIMEType"
+        case body = "Body"
+        case packageType = "Type"
+    }
+
+    public init(addresses: [String: SendAddress], mimeType: String, body: String, type: Int) {
+        self.addresses = addresses
+        self.mimeType = mimeType
+        self.body = body
+        self.packageType = type
+    }
+}
+
+public struct SendAddress: Encodable {
+    public let addressType: Int
+    public let bodyKeyPacket: String
+    public let signature: Int
+
+    enum CodingKeys: String, CodingKey {
+        case addressType = "Type"
+        case bodyKeyPacket = "BodyKeyPacket"
+        case signature = "Signature"
+    }
+
+    public init(type: Int, bodyKeyPacket: String, signature: Int = 0) {
+        self.addressType = type
+        self.bodyKeyPacket = bodyKeyPacket
+        self.signature = signature
+    }
+}
+
+public struct SendResponse: Decodable {
+    public let code: Int
+    public let sent: FullMessage?
+
+    enum CodingKeys: String, CodingKey {
+        case code = "Code"
+        case sent = "Sent"
+    }
+}
+
+// MARK: - List/Get responses
 
 public struct MessagesResponse: Decodable {
     public let code: Int

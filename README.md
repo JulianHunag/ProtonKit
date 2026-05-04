@@ -20,6 +20,7 @@ ProtonKit directly interfaces with the Proton REST API, implementing SRP-6a auth
 - **Attachment Download** - Download and decrypt PGP-encrypted attachments with save dialog
 - **Search** - Keyword search across messages via Proton API
 - **Keyboard Shortcuts** - Cmd+R refresh, Delete trash, Cmd+Shift+U toggle read/unread
+- **Reply / Reply All / Compose** - PGP-encrypted email sending with end-to-end encryption for Proton recipients
 
 ## Screenshots
 
@@ -88,7 +89,8 @@ Key design decisions:
 
 ## Not Yet Implemented
 
-- Email composing/sending
+- Compose to external (non-Proton) recipients
+- Forwarding
 - Event-based polling (currently timer-based)
 
 ## References

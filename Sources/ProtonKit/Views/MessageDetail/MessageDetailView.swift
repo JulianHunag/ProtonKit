@@ -8,6 +8,7 @@ struct MessageDetailView: View {
     @StateObject private var vm = MessageDetailViewModel()
     @State private var webViewHeight: CGFloat = 400
     @State private var downloadingAttachmentID: String?
+    @State private var composeMode: ComposeMode?
 
     var body: some View {
         Group {
@@ -18,6 +19,17 @@ struct MessageDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         messageHeader(msg)
+
+                        HStack(spacing: 12) {
+                            Button(action: { composeMode = .reply(msg) }) {
+                                Label("Reply", systemImage: "arrowshape.turn.up.left")
+                            }
+                            Button(action: { composeMode = .replyAll(msg) }) {
+                                Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
+                            }
+                            Spacer()
+                        }
+
                         Divider()
                         HTMLWebView(html: vm.bodyHTML, contentHeight: $webViewHeight)
                             .frame(height: max(webViewHeight, 100))
@@ -27,6 +39,10 @@ struct MessageDetailView: View {
                         }
                     }
                     .padding()
+                }
+                .sheet(item: $composeMode) { mode in
+                    ComposeView(vm: ComposeViewModel(mode: mode))
+                        .environmentObject(session)
                 }
             } else if let error = vm.errorMessage {
                 ContentUnavailableView(

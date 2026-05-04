@@ -8,6 +8,7 @@ struct MailView: View {
     @StateObject private var messageListVM = MessageListViewModel()
     @State private var selectedMessageID: String?
     @State private var searchText = ""
+    @State private var composeMode: ComposeMode?
 
     var body: some View {
         NavigationSplitView {
@@ -37,6 +38,11 @@ struct MailView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Button(action: { composeMode = .newMessage }) {
+                    Image(systemName: "square.and.pencil")
+                }
+                .help("New Message")
+
                 Button(action: { Task { await refresh() } }) {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -132,6 +138,10 @@ struct MailView: View {
                 await messageListVM.load(client: session.client, labelID: "0")
                 selectedMessageID = nav.messageID
             }
+        }
+        .sheet(item: $composeMode) { mode in
+            ComposeView(vm: ComposeViewModel(mode: mode))
+                .environmentObject(session)
         }
     }
 
