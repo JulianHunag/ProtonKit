@@ -3,6 +3,8 @@ import ProtonCore
 
 struct MessageRowView: View {
     let message: MessageMetadata
+    var onTrash: (() -> Void)?
+    var onToggleUnread: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -48,6 +50,23 @@ struct MessageRowView: View {
             }
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button(action: { onToggleUnread?() }) {
+                Label(
+                    message.unread == 1 ? "Mark as Read" : "Mark as Unread",
+                    systemImage: message.unread == 1 ? "envelope.open" : "envelope.badge"
+                )
+            }
+            Divider()
+            Button(role: .destructive, action: { onTrash?() }) {
+                Label("Move to Trash", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive, action: { onTrash?() }) {
+                Label("Trash", systemImage: "trash")
+            }
+        }
     }
 
     private func formatDate(_ date: Date) -> String {

@@ -4,6 +4,8 @@ import ProtonCore
 struct MessageListView: View {
     @ObservedObject var viewModel: MessageListViewModel
     @Binding var selectedMessageID: String?
+    var onTrash: ((String) -> Void)?
+    var onToggleUnread: ((String) -> Void)?
 
     var body: some View {
         Group {
@@ -19,8 +21,12 @@ struct MessageListView: View {
             } else {
                 List(selection: $selectedMessageID) {
                     ForEach(viewModel.messages) { msg in
-                        MessageRowView(message: msg)
-                            .tag(msg.id)
+                        MessageRowView(
+                            message: msg,
+                            onTrash: { onTrash?(msg.id) },
+                            onToggleUnread: { onToggleUnread?(msg.id) }
+                        )
+                        .tag(msg.id)
                     }
 
                     if viewModel.hasMore {

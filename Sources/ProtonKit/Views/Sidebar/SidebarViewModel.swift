@@ -98,6 +98,15 @@ final class SidebarViewModel: ObservableObject {
         }
     }
 
+    func incrementUnread(accountUID: String, labelID: String) {
+        guard let sIdx = sections.firstIndex(where: { $0.uid == accountUID }) else { return }
+        if let fIdx = sections[sIdx].systemFolders.firstIndex(where: { $0.id == labelID }) {
+            sections[sIdx].systemFolders[fIdx].unread += 1
+        } else if let fIdx = sections[sIdx].customFolders.firstIndex(where: { $0.id == labelID }) {
+            sections[sIdx].customFolders[fIdx].unread += 1
+        }
+    }
+
     var totalInboxUnread: Int {
         sections.reduce(0) { sum, section in
             sum + (section.systemFolders.first { $0.id == "0" }?.unread ?? 0)

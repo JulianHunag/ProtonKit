@@ -8,12 +8,9 @@ public actor ProtonClient {
     public private(set) var refreshToken: String?
 
     public nonisolated static func debugLog(_ msg: String) {
-        let url = URL(fileURLWithPath: "/tmp/pk_debug.log")
-        let line = "\(Date()): [API] \(msg)\n"
-        guard let d = line.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: url.path) {
-            if let fh = try? FileHandle(forWritingTo: url) { fh.seekToEndOfFile(); fh.write(d); fh.closeFile() }
-        } else { try? d.write(to: url) }
+        #if DEBUG
+        print("[ProtonKit] \(msg)")
+        #endif
     }
 
     public init() {
@@ -102,6 +99,27 @@ public actor ProtonClient {
             }
             throw ProtonAPIError.decodingError(error)
         }
+    }
+
+    public func getRawData(path: String) async throws -> Data {
+        let url = URL(string: Self.baseURL.absoluteString + "/" + path)!
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Other", forHTTPHeaderField: "x-pm-appversion")
+        if let token = accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let uid {
+            req.setValue(uid, forHTTPHeaderField: "x-pm-uid")
+        }
+        let (data, response) = try await session.data(for: req)
+        guard let httpResp = response as? HTTPURLResponse,
+              (200..<300).contains(httpResp.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw ProtonAPIError.httpError(statusCode: code, message: nil)
+        }
+        Self.debugLog("GET(raw) /\(path) → \(httpResp.statusCode) (\(data.count) bytes)")
+        return data
     }
 
     public func get<T: Decodable>(path: String, authenticated: Bool = true) async throws -> T {

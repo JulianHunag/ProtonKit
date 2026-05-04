@@ -86,12 +86,25 @@ public final class MessageDecryptor {
     }
 
     private static func debugLog(_ msg: String) {
-        let url = URL(fileURLWithPath: "/tmp/pk_debug.log")
-        let line = "\(Date()): [CRYPTO] \(msg)\n"
-        guard let d = line.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: url.path) {
-            if let fh = try? FileHandle(forWritingTo: url) { fh.seekToEndOfFile(); fh.write(d); fh.closeFile() }
-        } else { try? d.write(to: url) }
+        #if DEBUG
+        print("[ProtonKit:Crypto] \(msg)")
+        #endif
+    }
+
+    public func decryptAttachment(keyPackets: Data, dataPackets: Data) throws -> Data {
+        guard !allKeys.isEmpty else { throw DecryptionError.noKeys }
+        let combined = keyPackets + dataPackets
+        let map = self.passphraseMap
+        do {
+            return try ObjectivePGP.decrypt(
+                combined,
+                andVerifySignature: false,
+                using: allKeys,
+                passphraseForKey: { key in key.flatMap { map[ObjectIdentifier($0)] } }
+            )
+        } catch {
+            throw DecryptionError.decryptionFailed(error.localizedDescription)
+        }
     }
 
     public func decrypt(armoredMessage: String) throws -> String {

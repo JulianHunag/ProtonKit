@@ -7,10 +7,15 @@ public enum MessageAPI {
         page: Int = 0,
         pageSize: Int = 50,
         sort: String = "Time",
-        desc: Bool = true
+        desc: Bool = true,
+        keyword: String? = nil
     ) async throws -> MessagesResponse {
         let descParam = desc ? 1 : 0
-        let path = "mail/v4/messages?LabelID=\(labelID)&Page=\(page)&PageSize=\(pageSize)&Sort=\(sort)&Desc=\(descParam)"
+        var path = "mail/v4/messages?LabelID=\(labelID)&Page=\(page)&PageSize=\(pageSize)&Sort=\(sort)&Desc=\(descParam)"
+        if let keyword, !keyword.isEmpty,
+           let encoded = keyword.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&Keyword=\(encoded)"
+        }
         return try await client.get(path: path)
     }
 
@@ -28,6 +33,10 @@ public enum MessageAPI {
         struct Req: Encodable { let IDs: [String] }
         struct Resp: Decodable { let Code: Int }
         let _: Resp = try await client.put(path: "mail/v4/messages/unread", body: Req(IDs: messageIDs))
+    }
+
+    public static func downloadAttachment(client: ProtonClient, attachmentID: String) async throws -> Data {
+        try await client.getRawData(path: "mail/v4/attachments/\(attachmentID)")
     }
 
     public static func trash(client: ProtonClient, messageIDs: [String]) async throws {

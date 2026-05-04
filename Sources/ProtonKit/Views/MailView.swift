@@ -7,6 +7,7 @@ struct MailView: View {
     @StateObject private var sidebarVM = SidebarViewModel()
     @StateObject private var messageListVM = MessageListViewModel()
     @State private var selectedMessageID: String?
+    @State private var searchText = ""
 
     var body: some View {
         NavigationSplitView {
@@ -17,7 +18,9 @@ struct MailView: View {
         } content: {
             MessageListView(
                 viewModel: messageListVM,
-                selectedMessageID: $selectedMessageID
+                selectedMessageID: $selectedMessageID,
+                onTrash: { id in Task { await trashMessage(id: id) } },
+                onToggleUnread: { id in Task { await toggleUnread(id: id) } }
             )
             .navigationSplitViewColumnWidth(min: 280, ideal: 350, max: 500)
         } detail: {
@@ -39,7 +42,41 @@ struct MailView: View {
                 }
                 .keyboardShortcut("r", modifiers: .command)
 
+                Button(action: {
+                    guard let id = selectedMessageID else { return }
+                    Task { await toggleUnread(id: id) }
+                }) {
+                    Image(systemName: "envelope.badge")
+                }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .disabled(selectedMessageID == nil)
+                .help("Toggle Read/Unread")
+
+                Button(role: .destructive, action: {
+                    guard let id = selectedMessageID else { return }
+                    Task { await trashMessage(id: id) }
+                }) {
+                    Image(systemName: "trash")
+                }
+                .keyboardShortcut(.delete, modifiers: [])
+                .disabled(selectedMessageID == nil)
+                .help("Move to Trash")
+
                 accountMenu
+            }
+        }
+        .searchable(text: $searchText, prompt: "Search messages")
+        .onSubmit(of: .search) {
+            guard let sel = sidebarVM.selection, !searchText.isEmpty else { return }
+            Task {
+                await messageListVM.search(
+                    client: session.client, keyword: searchText, labelID: sel.labelID
+                )
+            }
+        }
+        .onChange(of: searchText) { _, newValue in
+            if newValue.isEmpty, let sel = sidebarVM.selection {
+                Task { await messageListVM.load(client: session.client, labelID: sel.labelID) }
             }
         }
         .task {
@@ -61,8 +98,7 @@ struct MailView: View {
             for labelID in msg.labelIDs {
                 sidebarVM.decrementUnread(accountUID: sel.accountUID, labelID: labelID)
             }
-            NSApplication.shared.dockTile.badgeLabel =
-                sidebarVM.totalInboxUnread > 0 ? "\(sidebarVM.totalInboxUnread)" : nil
+            updateDockBadge()
         }
         .onChange(of: sidebarVM.selection) { _, newValue in
             guard let sel = newValue else { return }
@@ -76,8 +112,7 @@ struct MailView: View {
                 await messageListVM.load(client: session.client, labelID: sel.labelID)
                 if let account = session.accountStore.activeAccount {
                     await sidebarVM.refreshCounts(for: account)
-                    NSApplication.shared.dockTile.badgeLabel =
-                        sidebarVM.totalInboxUnread > 0 ? "\(sidebarVM.totalInboxUnread)" : nil
+                    updateDockBadge()
                 }
             }
         }
@@ -152,5 +187,38 @@ struct MailView: View {
         if let sel = sidebarVM.selection {
             await messageListVM.load(client: session.client, labelID: sel.labelID)
         }
+    }
+
+    private func trashMessage(id: String) async {
+        guard let sel = sidebarVM.selection else { return }
+        let msg = messageListVM.messages.first { $0.id == id }
+        if id == selectedMessageID { selectedMessageID = nil }
+        await messageListVM.trashMessages(client: session.client, ids: [id])
+        if let msg, msg.unread == 1 {
+            for labelID in msg.labelIDs {
+                sidebarVM.decrementUnread(accountUID: sel.accountUID, labelID: labelID)
+            }
+            updateDockBadge()
+        }
+    }
+
+    private func toggleUnread(id: String) async {
+        guard let sel = sidebarVM.selection,
+              let msg = messageListVM.messages.first(where: { $0.id == id }) else { return }
+        let wasUnread = msg.unread == 1
+        await messageListVM.toggleUnread(client: session.client, id: id)
+        for labelID in msg.labelIDs {
+            if wasUnread {
+                sidebarVM.decrementUnread(accountUID: sel.accountUID, labelID: labelID)
+            } else {
+                sidebarVM.incrementUnread(accountUID: sel.accountUID, labelID: labelID)
+            }
+        }
+        updateDockBadge()
+    }
+
+    private func updateDockBadge() {
+        NSApplication.shared.dockTile.badgeLabel =
+            sidebarVM.totalInboxUnread > 0 ? "\(sidebarVM.totalInboxUnread)" : nil
     }
 }

@@ -7,6 +7,7 @@ struct MessageDetailView: View {
     @EnvironmentObject var session: SessionManager
     @StateObject private var vm = MessageDetailViewModel()
     @State private var webViewHeight: CGFloat = 400
+    @State private var downloadingAttachmentID: String?
 
     var body: some View {
         Group {
@@ -99,19 +100,59 @@ struct MessageDetailView: View {
                 .font(.headline)
 
             ForEach(attachments) { att in
-                HStack {
-                    Image(systemName: "doc")
-                    Text(att.name)
-                        .lineLimit(1)
-                    Spacer()
-                    Text(formatSize(att.size))
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
+                Button(action: { Task { await downloadAttachment(att) } }) {
+                    HStack {
+                        if downloadingAttachmentID == att.id {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.down.circle")
+                        }
+                        Text(att.name)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(formatSize(att.size))
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                    .padding(8)
+                    .background(.quaternary)
+                    .cornerRadius(6)
                 }
-                .padding(8)
-                .background(.quaternary)
-                .cornerRadius(6)
+                .buttonStyle(.plain)
+                .disabled(downloadingAttachmentID != nil)
             }
+        }
+    }
+
+    private func downloadAttachment(_ att: FullMessage.Attachment) async {
+        downloadingAttachmentID = att.id
+        defer { downloadingAttachmentID = nil }
+
+        do {
+            let encryptedData = try await MessageAPI.downloadAttachment(
+                client: session.client, attachmentID: att.id
+            )
+
+            let fileData: Data
+            if let keyPacketsBase64 = att.keyPackets,
+               let keyPackets = Data(base64Encoded: keyPacketsBase64) {
+                fileData = try session.decryptor.decryptAttachment(
+                    keyPackets: keyPackets, dataPackets: encryptedData
+                )
+            } else {
+                fileData = encryptedData
+            }
+
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = att.name
+            panel.canCreateDirectories = true
+            let response = panel.runModal()
+            if response == .OK, let url = panel.url {
+                try fileData.write(to: url)
+            }
+        } catch {
+            ProtonClient.debugLog("Attachment download failed: \(error)")
         }
     }
 
