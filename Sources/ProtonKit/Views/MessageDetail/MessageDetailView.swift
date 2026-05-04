@@ -21,11 +21,19 @@ struct MessageDetailView: View {
                         messageHeader(msg)
 
                         HStack(spacing: 12) {
-                            Button(action: { composeMode = .reply(msg) }) {
-                                Label("Reply", systemImage: "arrowshape.turn.up.left")
-                            }
-                            Button(action: { composeMode = .replyAll(msg) }) {
-                                Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
+                            if msg.labelIDs.contains("8") {
+                                Button(action: {
+                                    composeMode = .editDraft(msg, decryptedHTML: vm.rawDecryptedBody)
+                                }) {
+                                    Label("Edit Draft", systemImage: "pencil")
+                                }
+                            } else {
+                                Button(action: { composeMode = .reply(msg) }) {
+                                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                                }
+                                Button(action: { composeMode = .replyAll(msg) }) {
+                                    Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
+                                }
                             }
                             Spacer()
                         }

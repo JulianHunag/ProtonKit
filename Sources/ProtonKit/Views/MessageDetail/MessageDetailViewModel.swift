@@ -5,6 +5,7 @@ import ProtonCore
 final class MessageDetailViewModel: ObservableObject {
     @Published var message: FullMessage?
     @Published var bodyHTML: String = ""
+    @Published var rawDecryptedBody: String = ""
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -19,6 +20,7 @@ final class MessageDetailViewModel: ObservableObject {
             if let decryptor, resp.message.body.contains("-----BEGIN PGP MESSAGE-----") {
                 do {
                     let decrypted = try decryptor.decrypt(armoredMessage: resp.message.body)
+                    rawDecryptedBody = decrypted
                     bodyHTML = HTMLSanitizer.sanitize(decrypted)
                 } catch {
                     ProtonClient.debugLog("Decryption failed: \(error)")
