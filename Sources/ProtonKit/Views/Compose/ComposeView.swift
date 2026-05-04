@@ -34,6 +34,9 @@ struct ComposeView: View {
         .onChange(of: vm.didSend) { _, sent in
             if sent { dismiss() }
         }
+        .onChange(of: vm.didSaveDraft) { _, saved in
+            if saved { dismiss() }
+        }
     }
 
     private var headerFields: some View {
@@ -72,17 +75,23 @@ struct ComposeView: View {
 
             Spacer()
 
-            if vm.isSending {
+            if vm.isSending || vm.isSavingDraft {
                 ProgressView()
                     .controlSize(.small)
                     .padding(.trailing, 4)
             }
 
+            Button("Save Draft") {
+                Task { await vm.saveDraft(session: session) }
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(vm.isSending || vm.isSavingDraft)
+
             Button("Send") {
                 Task { await vm.send(session: session) }
             }
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(vm.isSending || vm.toText.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(vm.isSending || vm.isSavingDraft || vm.toText.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding()
     }

@@ -22,8 +22,10 @@ final class ComposeViewModel: ObservableObject {
     @Published var subject = ""
     @Published var bodyText = ""
     @Published var isSending = false
+    @Published var isSavingDraft = false
     @Published var errorMessage: String?
     @Published var didSend = false
+    @Published var didSaveDraft = false
 
     let mode: ComposeMode
     private let originalMessage: FullMessage?
@@ -47,6 +49,42 @@ final class ComposeViewModel: ObservableObject {
         }
     }
 
+    func saveDraft(session: SessionManager) async {
+        guard let account = session.accountStore.activeAccount,
+              let address = account.addresses.first else {
+            errorMessage = "No sender address available"
+            return
+        }
+
+        isSavingDraft = true
+        errorMessage = nil
+
+        do {
+            let (encryptedBody, _) = try await encryptBody(session: session, address: address)
+            let toAddresses = parseRecipients(toText)
+            let ccAddresses = parseRecipients(ccText)
+            let (parentID, action) = replyParams()
+
+            let _ = try await MessageAPI.createDraft(
+                client: session.client,
+                subject: subject,
+                body: encryptedBody,
+                senderAddressID: address.id,
+                senderName: account.displayName,
+                senderAddress: address.email,
+                toList: toAddresses,
+                ccList: ccAddresses,
+                parentID: parentID,
+                action: action
+            )
+            didSaveDraft = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isSavingDraft = false
+    }
+
     func send(session: SessionManager) async {
         guard !toText.trimmingCharacters(in: .whitespaces).isEmpty else {
             errorMessage = "No recipients specified"
@@ -62,39 +100,10 @@ final class ComposeViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let htmlBody = bodyText
-                .replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-                .replacingOccurrences(of: "\n", with: "<br>")
-            let wrappedBody = "<html><body>\(htmlBody)</body></html>"
-
-            let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
-            guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
-                errorMessage = "Failed to get sender public key"
-                isSending = false
-                return
-            }
-            let encryptedDraftBody = try MessageDecryptor.encryptWithPublicKey(
-                plaintext: wrappedBody,
-                armoredPublicKey: senderPubKey
-            )
-
+            let (encryptedDraftBody, wrappedBody) = try await encryptBody(session: session, address: address)
             let toAddresses = parseRecipients(toText)
             let ccAddresses = parseRecipients(ccText)
-
-            var action: Int? = nil
-            var parentID: String? = nil
-            switch mode {
-            case .reply(let msg) where !msg.labelIDs.contains("8"):
-                parentID = msg.id
-                action = 0
-            case .replyAll(let msg) where !msg.labelIDs.contains("8"):
-                parentID = msg.id
-                action = 1
-            default:
-                break
-            }
+            let (parentID, action) = replyParams()
 
             let draftResp = try await MessageAPI.createDraft(
                 client: session.client,
@@ -173,6 +182,36 @@ final class ComposeViewModel: ObservableObject {
         }
 
         isSending = false
+    }
+
+    private func encryptBody(session: SessionManager, address: ProtonAddress) async throws -> (encryptedBody: String, wrappedBody: String) {
+        let htmlBody = bodyText
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+        let wrappedBody = "<html><body>\(htmlBody)</body></html>"
+
+        let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
+        guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
+            throw EncryptionError.encryptionFailed("Failed to get sender public key")
+        }
+        let encrypted = try MessageDecryptor.encryptWithPublicKey(
+            plaintext: wrappedBody,
+            armoredPublicKey: senderPubKey
+        )
+        return (encrypted, wrappedBody)
+    }
+
+    private func replyParams() -> (parentID: String?, action: Int?) {
+        switch mode {
+        case .reply(let msg) where !msg.labelIDs.contains("8"):
+            return (msg.id, 0)
+        case .replyAll(let msg) where !msg.labelIDs.contains("8"):
+            return (msg.id, 1)
+        default:
+            return (nil, nil)
+        }
     }
 
     private func parseRecipients(_ text: String) -> [EmailAddress] {
