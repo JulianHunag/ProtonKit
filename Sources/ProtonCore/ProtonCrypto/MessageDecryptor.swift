@@ -107,6 +107,36 @@ public final class MessageDecryptor {
         }
     }
 
+    public func sign(data: Data) throws -> Data {
+        guard !allKeys.isEmpty else { throw DecryptionError.noKeys }
+        let map = self.passphraseMap
+        let signed = try ObjectivePGP.sign(
+            data,
+            detached: false,
+            using: allKeys,
+            passphraseForKey: { key in map[ObjectIdentifier(key)] }
+        )
+        return signed
+    }
+
+    public static func encryptWithPublicKey(plaintext: String, armoredPublicKey: String) throws -> String {
+        guard let keyData = armoredPublicKey.data(using: .utf8) else {
+            throw DecryptionError.keyParseFailed
+        }
+        let pubKeys = try ObjectivePGP.readKeys(from: keyData)
+        guard !pubKeys.isEmpty else { throw DecryptionError.keyParseFailed }
+        guard let data = plaintext.data(using: .utf8) else {
+            throw DecryptionError.decryptionFailed("Invalid text encoding")
+        }
+        let encrypted = try ObjectivePGP.encrypt(
+            data,
+            addSignature: false,
+            using: pubKeys,
+            passphraseForKey: { _ in nil }
+        )
+        return Armor.armored(encrypted, as: .message)
+    }
+
     public func decrypt(armoredMessage: String) throws -> String {
         guard !allKeys.isEmpty else { throw DecryptionError.noKeys }
 

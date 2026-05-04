@@ -22,6 +22,7 @@ public final class AccountContext: Identifiable, ObservableObject {
     public var addresses: [ProtonAddress] = []
     public let decryptor = MessageDecryptor()
     public var keyPassphrase: String?
+    public var keyPairs: [(armoredKey: String, passphrase: String)] = []
 
     public var id: String { uid }
 

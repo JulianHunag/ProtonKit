@@ -170,6 +170,7 @@ public final class AccountStore: ObservableObject {
             }
         }
 
+        context.keyPairs = keyPairs
         try? context.decryptor.loadKeysWithPassphrases(keyPairs)
     }
 

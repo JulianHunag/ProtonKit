@@ -43,17 +43,20 @@ public final class MessageEncryptor {
         guard !senderKeys.isEmpty else { throw EncryptionError.noSenderKey }
     }
 
-    public func encryptForDraft(plaintext: String) throws -> String {
-        guard !senderKeys.isEmpty else { throw EncryptionError.noSenderKey }
+    public func encryptForDraft(plaintext: String, armoredPublicKey: String) throws -> String {
+        guard let keyData = armoredPublicKey.data(using: .utf8) else {
+            throw EncryptionError.encryptionFailed("Invalid public key encoding")
+        }
+        let pubKeys = try ObjectivePGP.readKeys(from: keyData)
+        guard !pubKeys.isEmpty else { throw EncryptionError.noSenderKey }
         guard let data = plaintext.data(using: .utf8) else {
             throw EncryptionError.encryptionFailed("Invalid text encoding")
         }
-        let map = passphraseMap
         let encrypted = try ObjectivePGP.encrypt(
             data,
             addSignature: false,
-            using: senderKeys,
-            passphraseForKey: { key in map[ObjectIdentifier(key)] }
+            using: pubKeys,
+            passphraseForKey: { _ in nil }
         )
         return Armor.armored(encrypted, as: .message)
     }

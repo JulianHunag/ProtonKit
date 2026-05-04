@@ -53,8 +53,7 @@ final class ComposeViewModel: ObservableObject {
             return
         }
         guard let account = session.accountStore.activeAccount,
-              let address = account.addresses.first,
-              let primaryKey = address.primaryKey else {
+              let address = account.addresses.first else {
             errorMessage = "No sender address available"
             return
         }
@@ -63,10 +62,6 @@ final class ComposeViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let encryptor = MessageEncryptor()
-            let passphrase = account.keyPassphrase ?? ""
-            try encryptor.loadSenderKeys([(armoredKey: primaryKey.privateKey, passphrase: passphrase)])
-
             let htmlBody = bodyText
                 .replacingOccurrences(of: "&", with: "&amp;")
                 .replacingOccurrences(of: "<", with: "&lt;")
@@ -74,7 +69,16 @@ final class ComposeViewModel: ObservableObject {
                 .replacingOccurrences(of: "\n", with: "<br>")
             let wrappedBody = "<html><body>\(htmlBody)</body></html>"
 
-            let encryptedDraftBody = try encryptor.encryptForDraft(plaintext: wrappedBody)
+            let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
+            guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
+                errorMessage = "Failed to get sender public key"
+                isSending = false
+                return
+            }
+            let encryptedDraftBody = try MessageDecryptor.encryptWithPublicKey(
+                plaintext: wrappedBody,
+                armoredPublicKey: senderPubKey
+            )
 
             let toAddresses = parseRecipients(toText)
             let ccAddresses = parseRecipients(ccText)
@@ -107,25 +111,53 @@ final class ComposeViewModel: ObservableObject {
             let draftID = draftResp.message.id
 
             let allRecipients = toAddresses + ccAddresses
-            var packages: [SendPackage] = []
+            var internalAddrs: [String: SendAddress] = [:]
+            var internalBody: String?
+            var clearAddrs: [String: SendAddress] = [:]
+
+            let encryptor = MessageEncryptor()
+            try encryptor.loadSenderKeys(account.keyPairs)
 
             for recipient in allRecipients {
                 let keyResp = try await KeyAPI.getPublicKeys(client: session.client, email: recipient.address)
-                guard let pubKey = keyResp.keys.first?.publicKey else {
-                    throw EncryptionError.recipientKeyParseFailed(recipient.address)
-                }
-                let split = try encryptor.encryptForRecipient(
-                    plaintext: wrappedBody,
-                    recipientArmoredPublicKey: pubKey
-                )
-                packages.append(SendPackage(
-                    addresses: [recipient.address: SendAddress(
+                if let pubKey = keyResp.keys.first?.publicKey, !pubKey.isEmpty {
+                    let split = try encryptor.encryptForRecipient(
+                        plaintext: wrappedBody,
+                        recipientArmoredPublicKey: pubKey
+                    )
+                    internalAddrs[recipient.address] = SendAddress(
                         type: 1,
                         bodyKeyPacket: split.keyPacket.base64EncodedString()
-                    )],
+                    )
+                    if internalBody == nil {
+                        internalBody = split.dataPacket.base64EncodedString()
+                    }
+                } else {
+                    clearAddrs[recipient.address] = SendAddress(type: 4, bodyKeyPacket: "")
+                }
+            }
+
+            var packages: [SendPackage] = []
+            if !internalAddrs.isEmpty, let body = internalBody {
+                packages.append(SendPackage(
+                    addresses: internalAddrs,
                     mimeType: "text/html",
-                    body: split.dataPacket.base64EncodedString(),
+                    body: body,
                     type: 1
+                ))
+            }
+            if !clearAddrs.isEmpty {
+                let signedBody = try session.decryptor.sign(data: Data(wrappedBody.utf8))
+                let clearEncrypted = try ClearBodyEncryptor.encryptSignedContent(signedBody)
+                packages.append(SendPackage(
+                    addresses: clearAddrs,
+                    mimeType: "text/html",
+                    body: clearEncrypted.dataPacket.base64EncodedString(),
+                    type: 4,
+                    bodyKey: SessionKey(
+                        key: clearEncrypted.sessionKey.base64EncodedString(),
+                        algorithm: clearEncrypted.algorithm
+                    )
                 ))
             }
 

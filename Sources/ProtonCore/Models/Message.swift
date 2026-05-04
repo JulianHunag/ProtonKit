@@ -101,24 +101,42 @@ public struct FullMessage: Decodable {
 
 // MARK: - Send models
 
+public struct SessionKey: Encodable {
+    public let key: String
+    public let algorithm: String
+
+    enum CodingKeys: String, CodingKey {
+        case key = "Key"
+        case algorithm = "Algorithm"
+    }
+
+    public init(key: String, algorithm: String) {
+        self.key = key
+        self.algorithm = algorithm
+    }
+}
+
 public struct SendPackage: Encodable {
     public let addresses: [String: SendAddress]
     public let mimeType: String
     public let body: String
     public let packageType: Int
+    public let bodyKey: SessionKey?
 
     enum CodingKeys: String, CodingKey {
         case addresses = "Addresses"
         case mimeType = "MIMEType"
         case body = "Body"
         case packageType = "Type"
+        case bodyKey = "BodyKey"
     }
 
-    public init(addresses: [String: SendAddress], mimeType: String, body: String, type: Int) {
+    public init(addresses: [String: SendAddress], mimeType: String, body: String, type: Int, bodyKey: SessionKey? = nil) {
         self.addresses = addresses
         self.mimeType = mimeType
         self.body = body
         self.packageType = type
+        self.bodyKey = bodyKey
     }
 }
 

@@ -89,8 +89,8 @@ Key design decisions:
 
 ## Not Yet Implemented
 
-- Compose to external (non-Proton) recipients
 - Forwarding
+- Attachment upload (sending with attachments)
 - Event-based polling (currently timer-based)
 
 ## References
