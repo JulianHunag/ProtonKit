@@ -35,6 +35,17 @@ hdiutil create -volname "ProtonKit" \
 
 rm -rf "$DMG_DIR"
 
+echo "Setting DMG icon..."
+ICON_SRC="$PROJECT_DIR/resources/AppIcon.icns"
+if [ -f "$ICON_SRC" ]; then
+    cp "$ICON_SRC" /tmp/tmpicon.icns
+    sips -i /tmp/tmpicon.icns > /dev/null 2>&1
+    DeRez -only icns /tmp/tmpicon.icns > /tmp/tmpicns.rsrc 2>&1
+    Rez -append /tmp/tmpicns.rsrc -o "$DMG_PATH" 2>&1
+    SetFile -a C "$DMG_PATH" 2>&1
+    rm -f /tmp/tmpicon.icns /tmp/tmpicns.rsrc
+fi
+
 echo ""
 echo "Done! DMG created at:"
 echo "  $DMG_PATH"
