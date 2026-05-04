@@ -86,13 +86,13 @@ final class ComposeViewModel: ObservableObject {
             var action: Int? = nil
             var parentID: String? = nil
             switch mode {
-            case .reply(let msg):
+            case .reply(let msg) where !msg.labelIDs.contains("8"):
                 parentID = msg.id
                 action = 0
-            case .replyAll(let msg):
+            case .replyAll(let msg) where !msg.labelIDs.contains("8"):
                 parentID = msg.id
                 action = 1
-            case .newMessage:
+            default:
                 break
             }
 
