@@ -50,11 +50,23 @@ struct ProtonKitApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
+
+        WindowGroup(id: "message-detail", for: String.self) { $messageID in
+            if let messageID {
+                MessageDetailView(messageID: messageID)
+                    .environmentObject(session)
+                    .environmentObject(notificationService)
+                    .frame(minWidth: 600, minHeight: 400)
+            }
+        }
+        .defaultSize(width: 800, height: 600)
     }
 
     private func enforceOneWindow() {
         let appWindows = NSApplication.shared.windows.filter {
-            ($0.isVisible || $0.isMiniaturized) && $0.className == "SwiftUI.SwiftUIWindow"
+            ($0.isVisible || $0.isMiniaturized)
+            && $0.className == "SwiftUI.SwiftUIWindow"
+            && !($0.identifier?.rawValue ?? "").contains("message-detail")
         }
         guard appWindows.count > 1, let oldest = appWindows.first else { return }
 

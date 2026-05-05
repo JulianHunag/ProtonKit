@@ -61,6 +61,24 @@ final class MessageListViewModel: ObservableObject {
         }
     }
 
+    func markUnread(client: ProtonClient, ids: [String]) async {
+        try? await MessageAPI.markUnread(client: client, messageIDs: ids)
+        for id in ids {
+            if let idx = messages.firstIndex(where: { $0.id == id }) {
+                messages[idx].unread = 1
+            }
+        }
+    }
+
+    func markRead(client: ProtonClient, ids: [String]) async {
+        try? await MessageAPI.markRead(client: client, messageIDs: ids)
+        for id in ids {
+            if let idx = messages.firstIndex(where: { $0.id == id }) {
+                messages[idx].unread = 0
+            }
+        }
+    }
+
     func loadMore() async {
         guard let client, hasMore, !isLoading else { return }
         currentPage += 1

@@ -23,6 +23,7 @@ struct MailView: View {
                 onTrash: { id in Task { await trashMessage(id: id) } },
                 onTrashSelected: { Task { await trashSelectedMessages() } },
                 onToggleUnread: { id in Task { await toggleUnread(id: id) } },
+                onToggleUnreadSelected: { Task { await toggleUnreadSelected() } },
                 onReply: { id in Task { await openCompose(id: id, action: .reply) } },
                 onReplyAll: { id in Task { await openCompose(id: id, action: .replyAll) } },
                 onForward: { id in Task { await openCompose(id: id, action: .forward) } }
@@ -259,6 +260,29 @@ struct MailView: View {
                 sidebarVM.decrementUnread(accountUID: sel.accountUID, labelID: labelID)
             } else {
                 sidebarVM.incrementUnread(accountUID: sel.accountUID, labelID: labelID)
+            }
+        }
+        updateDockBadge()
+    }
+
+    private func toggleUnreadSelected() async {
+        guard let sel = sidebarVM.selection else { return }
+        let ids = Array(selectedMessageIDs)
+        let msgs = messageListVM.messages.filter { ids.contains($0.id) }
+        let hasUnread = msgs.contains { $0.unread == 1 }
+        if hasUnread {
+            await messageListVM.markRead(client: session.client, ids: ids)
+            for msg in msgs where msg.unread == 1 {
+                for labelID in msg.labelIDs {
+                    sidebarVM.decrementUnread(accountUID: sel.accountUID, labelID: labelID)
+                }
+            }
+        } else {
+            await messageListVM.markUnread(client: session.client, ids: ids)
+            for msg in msgs {
+                for labelID in msg.labelIDs {
+                    sidebarVM.incrementUnread(accountUID: sel.accountUID, labelID: labelID)
+                }
             }
         }
         updateDockBadge()

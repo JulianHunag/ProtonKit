@@ -7,6 +7,7 @@ struct MessageRowView: View {
     var onTrash: (() -> Void)?
     var onTrashSelected: (() -> Void)?
     var onToggleUnread: (() -> Void)?
+    var onToggleUnreadSelected: (() -> Void)?
     var onReply: (() -> Void)?
     var onReplyAll: (() -> Void)?
     var onForward: (() -> Void)?
@@ -68,7 +69,9 @@ struct MessageRowView: View {
                 }
                 Divider()
             }
-            Button(action: { onToggleUnread?() }) {
+            Button(action: {
+                if isMultiSelected { onToggleUnreadSelected?() } else { onToggleUnread?() }
+            }) {
                 Label(
                     message.unread == 1 ? "Mark as Read" : "Mark as Unread",
                     systemImage: message.unread == 1 ? "envelope.open" : "envelope.badge"
