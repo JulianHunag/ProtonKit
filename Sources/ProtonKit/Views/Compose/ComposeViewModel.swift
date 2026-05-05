@@ -4,7 +4,7 @@ import ProtonCore
 enum ComposeMode: Identifiable {
     case reply(FullMessage)
     case replyAll(FullMessage)
-    case forward(FullMessage)
+    case forward(FullMessage, decryptedHTML: String)
     case newMessage
     case editDraft(FullMessage, decryptedHTML: String)
 
@@ -12,7 +12,7 @@ enum ComposeMode: Identifiable {
         switch self {
         case .reply(let msg): return "reply-\(msg.id)"
         case .replyAll(let msg): return "replyAll-\(msg.id)"
-        case .forward(let msg): return "forward-\(msg.id)"
+        case .forward(let msg, _): return "forward-\(msg.id)"
         case .newMessage: return "new"
         case .editDraft(let msg, _): return "editDraft-\(msg.id)"
         }
@@ -75,11 +75,11 @@ final class ComposeViewModel: ObservableObject {
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject.hasPrefix("Re: ") ? msg.subject : "Re: \(msg.subject)"
             self.bodyText = Self.buildQuotedBody(msg)
-        case .forward(let msg):
+        case .forward(let msg, let decryptedHTML):
             self.originalMessage = msg
             self.existingDraftID = nil
             self.subject = msg.subject.hasPrefix("Fwd: ") ? msg.subject : "Fwd: \(msg.subject)"
-            self.bodyText = Self.buildForwardBody(msg)
+            self.bodyText = Self.buildForwardBody(msg, decryptedHTML: decryptedHTML)
         case .newMessage:
             self.originalMessage = nil
             self.existingDraftID = nil
@@ -374,7 +374,7 @@ final class ComposeViewModel: ObservableObject {
             return (msg.id, 0)
         case .replyAll(let msg) where !msg.labelIDs.contains("8"):
             return (msg.id, 1)
-        case .forward(let msg) where !msg.labelIDs.contains("8"):
+        case .forward(let msg, _) where !msg.labelIDs.contains("8"):
             return (msg.id, 2)
         default:
             return (nil, nil)
@@ -394,7 +394,7 @@ final class ComposeViewModel: ObservableObject {
         return "\n\n--- On \(date), \(msg.senderName) wrote ---\n"
     }
 
-    private static func buildForwardBody(_ msg: FullMessage) -> String {
+    private static func buildForwardBody(_ msg: FullMessage, decryptedHTML: String) -> String {
         let date = Date(timeIntervalSince1970: msg.time)
             .formatted(.dateTime.year().month().day().hour().minute())
         var body = "\n\n---------- Forwarded message ----------\n"
@@ -405,6 +405,7 @@ final class ComposeViewModel: ObservableObject {
             body += "To: \(msg.toList.map(\.address).joined(separator: ", "))\n"
         }
         body += "\n"
+        body += htmlToPlainText(decryptedHTML)
         return body
     }
 
