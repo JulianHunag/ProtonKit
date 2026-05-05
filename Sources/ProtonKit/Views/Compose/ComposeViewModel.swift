@@ -83,7 +83,7 @@ final class ComposeViewModel: ObservableObject {
             self.existingDraftID = nil
             self.forwardedHTML = decryptedHTML
             self.subject = msg.subject.hasPrefix("Fwd: ") ? msg.subject : "Fwd: \(msg.subject)"
-            self.bodyText = Self.buildForwardHeader(msg) + "\n" + Self.htmlToPlainText(decryptedHTML)
+            self.bodyText = Self.buildForwardHeader(msg)
         case .newMessage:
             self.originalMessage = nil
             self.existingDraftID = nil
