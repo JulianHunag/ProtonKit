@@ -6,6 +6,9 @@ struct MessageListView: View {
     @Binding var selectedMessageID: String?
     var onTrash: ((String) -> Void)?
     var onToggleUnread: ((String) -> Void)?
+    var onReply: ((String) -> Void)?
+    var onReplyAll: ((String) -> Void)?
+    var onForward: ((String) -> Void)?
 
     var body: some View {
         Group {
@@ -24,7 +27,10 @@ struct MessageListView: View {
                         MessageRowView(
                             message: msg,
                             onTrash: { onTrash?(msg.id) },
-                            onToggleUnread: { onToggleUnread?(msg.id) }
+                            onToggleUnread: { onToggleUnread?(msg.id) },
+                            onReply: { onReply?(msg.id) },
+                            onReplyAll: { onReplyAll?(msg.id) },
+                            onForward: { onForward?(msg.id) }
                         )
                         .tag(msg.id)
                     }

@@ -5,6 +5,9 @@ struct MessageRowView: View {
     let message: MessageMetadata
     var onTrash: (() -> Void)?
     var onToggleUnread: (() -> Void)?
+    var onReply: (() -> Void)?
+    var onReplyAll: (() -> Void)?
+    var onForward: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -51,6 +54,16 @@ struct MessageRowView: View {
         }
         .padding(.vertical, 4)
         .contextMenu {
+            Button(action: { onReply?() }) {
+                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            }
+            Button(action: { onReplyAll?() }) {
+                Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
+            }
+            Button(action: { onForward?() }) {
+                Label("Forward", systemImage: "arrowshape.turn.up.right")
+            }
+            Divider()
             Button(action: { onToggleUnread?() }) {
                 Label(
                     message.unread == 1 ? "Mark as Read" : "Mark as Unread",

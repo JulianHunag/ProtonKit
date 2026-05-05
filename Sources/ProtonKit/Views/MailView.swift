@@ -21,7 +21,10 @@ struct MailView: View {
                 viewModel: messageListVM,
                 selectedMessageID: $selectedMessageID,
                 onTrash: { id in Task { await trashMessage(id: id) } },
-                onToggleUnread: { id in Task { await toggleUnread(id: id) } }
+                onToggleUnread: { id in Task { await toggleUnread(id: id) } },
+                onReply: { id in Task { await openCompose(id: id, action: .reply) } },
+                onReplyAll: { id in Task { await openCompose(id: id, action: .replyAll) } },
+                onForward: { id in Task { await openCompose(id: id, action: .forward) } }
             )
             .navigationSplitViewColumnWidth(min: 280, ideal: 350, max: 500)
         } detail: {
@@ -225,6 +228,26 @@ struct MailView: View {
             }
         }
         updateDockBadge()
+    }
+
+    private enum ComposeAction { case reply, replyAll, forward }
+
+    private func openCompose(id: String, action: ComposeAction) async {
+        do {
+            let resp: MessageResponse = try await session.client.get(path: "mail/v4/messages/\(id)")
+            let msg = resp.message
+            switch action {
+            case .reply:
+                composeMode = .reply(msg)
+            case .replyAll:
+                composeMode = .replyAll(msg)
+            case .forward:
+                let decrypted = (try? session.decryptor.decrypt(armoredMessage: msg.body)) ?? ""
+                composeMode = .forward(msg, decryptedHTML: decrypted)
+            }
+        } catch {
+            ProtonClient.debugLog("openCompose failed: \(error)")
+        }
     }
 
     private func updateDockBadge() {
