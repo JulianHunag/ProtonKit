@@ -15,6 +15,8 @@ struct AccountSidebarSection: Identifiable {
     let displayName: String
     var systemFolders: [FolderItem]
     var customFolders: [FolderItem]
+    var usedSpace: Int64 = 0
+    var maxSpace: Int64 = 0
     var id: String { uid }
 }
 
@@ -48,7 +50,9 @@ final class SidebarViewModel: ObservableObject {
                 email: account.email,
                 displayName: account.displayName,
                 systemFolders: Self.defaultFolders,
-                customFolders: []
+                customFolders: [],
+                usedSpace: account.user?.usedSpace ?? 0,
+                maxSpace: account.user?.maxSpace ?? 0
             )
 
             do {

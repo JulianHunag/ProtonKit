@@ -42,6 +42,10 @@ struct SidebarView: View {
                                 .tag(SidebarSelection(accountUID: section.uid, labelID: folder.id))
                         }
                     }
+
+                    if section.maxSpace > 0 {
+                        StorageUsageView(usedSpace: section.usedSpace, maxSpace: section.maxSpace)
+                    }
                 } header: {
                     AccountSectionHeader(section: section, isSingleAccount: viewModel.sections.count == 1)
                 }
@@ -57,6 +61,48 @@ struct SidebarView: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+private struct StorageUsageView: View {
+    let usedSpace: Int64
+    let maxSpace: Int64
+
+    private var fraction: Double {
+        guard maxSpace > 0 else { return 0 }
+        return Double(usedSpace) / Double(maxSpace)
+    }
+
+    private var barColor: Color {
+        fraction >= 0.9 ? .red : .purple
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.2))
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(barColor)
+                        .frame(width: geo.size.width * min(fraction, 1.0))
+                }
+            }
+            .frame(height: 4)
+
+            Text("\(formatBytes(usedSpace)) / \(formatBytes(maxSpace))")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.top, 6)
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        if mb >= 1024 {
+            return String(format: "%.1f GB", mb / 1024)
+        }
+        return String(format: "%.0f MB", mb)
     }
 }
 

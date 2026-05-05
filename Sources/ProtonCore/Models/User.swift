@@ -6,6 +6,8 @@ public struct ProtonUser: Decodable {
     public let displayName: String?
     public let email: String?
     public let keys: [UserKey]
+    public let usedSpace: Int64?
+    public let maxSpace: Int64?
 
     public struct UserKey: Decodable {
         public let id: String
@@ -27,6 +29,8 @@ public struct ProtonUser: Decodable {
         case displayName = "DisplayName"
         case email = "Email"
         case keys = "Keys"
+        case usedSpace = "UsedSpace"
+        case maxSpace = "MaxSpace"
     }
 
     public var primaryKey: UserKey? {
