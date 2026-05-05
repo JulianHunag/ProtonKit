@@ -2,6 +2,7 @@ import Foundation
 import CommonCrypto
 import Security
 import ObjectivePGP
+import CryptoKit
 
 public struct EncryptedAttachment {
     public let sessionKey: Data
@@ -40,31 +41,31 @@ public enum AttachmentCrypto {
         }
 
         let exported = try keys[0].export()
-        let (keyID, n, e) = try findEncryptionSubkey(exported)
+        let keyInfo = try findEncryptionSubkey(exported)
 
-        var block = Data()
-        block.append(9) // AES-256
-        block.append(sessionKey)
-        let checksum: UInt16 = sessionKey.reduce(0) { $0 &+ UInt16($1) }
-        block.append(UInt8(checksum >> 8))
-        block.append(UInt8(checksum & 0xFF))
+        switch keyInfo {
+        case .rsa(let keyID, let n, let e):
+            return try buildRSAKeyPacket(sessionKey: sessionKey, keyID: keyID, n: n, e: e)
+        case .ecdh(let keyID, let publicKey, let oid, let kdfHash, let kdfSym, let fingerprint):
+            return try buildECDHKeyPacket(
+                sessionKey: sessionKey, keyID: keyID, publicKey: publicKey,
+                oid: oid, kdfHash: kdfHash, kdfSym: kdfSym, fingerprint: fingerprint
+            )
+        }
+    }
 
-        let encrypted = try rsaEncrypt(data: block, n: n, e: e)
+    // MARK: - Key types
 
-        var body = Data()
-        body.append(3) // version 3
-        body.append(keyID)
-        body.append(1) // RSA
-        appendMPI(encrypted, to: &body)
-
-        return ClearBodyEncryptor.buildPacket(tag: 1, body: body)
+    private enum PGPKeyInfo {
+        case rsa(keyID: Data, n: Data, e: Data)
+        case ecdh(keyID: Data, publicKey: Data, oid: Data, kdfHash: UInt8, kdfSym: UInt8, fingerprint: Data)
     }
 
     // MARK: - PGP key parsing
 
-    private static func findEncryptionSubkey(_ data: Data) throws -> (keyID: Data, n: Data, e: Data) {
+    private static func findEncryptionSubkey(_ data: Data) throws -> PGPKeyInfo {
         var offset = 0
-        var primaryKey: (keyID: Data, n: Data, e: Data)?
+        var primaryKey: PGPKeyInfo?
 
         while offset < data.count {
             guard let (tag, headerLen, bodyLen) = parsePacketHeader(data, offset: offset) else { break }
@@ -73,7 +74,7 @@ public enum AttachmentCrypto {
             guard bodyEnd <= data.count else { break }
 
             if tag == 6 || tag == 14 {
-                if let parsed = parseRSAKeyPacket(Data(data[bodyStart..<bodyEnd])) {
+                if let parsed = parseKeyPacket(Data(data[bodyStart..<bodyEnd])) {
                     if tag == 14 { return parsed }
                     primaryKey = parsed
                 }
@@ -82,28 +83,74 @@ public enum AttachmentCrypto {
         }
 
         if let pk = primaryKey { return pk }
-        throw EncryptionError.encryptionFailed("No RSA key found in public key")
+        throw EncryptionError.encryptionFailed("No encryption key found in public key")
     }
 
-    private static func parseRSAKeyPacket(_ data: Data) -> (keyID: Data, n: Data, e: Data)? {
+    private static func parseKeyPacket(_ data: Data) -> PGPKeyInfo? {
         guard data.count > 6, data[0] == 4 else { return nil }
         let algo = data[5]
-        guard algo == 1 || algo == 2 || algo == 3 else { return nil }
 
+        if algo == 1 || algo == 2 || algo == 3 {
+            return parseRSAKeyPacket(data)
+        }
+        if algo == 18 {
+            return parseECDHKeyPacket(data)
+        }
+        return nil
+    }
+
+    private static func parseRSAKeyPacket(_ data: Data) -> PGPKeyInfo? {
         var pos = 6
         guard let (n, nEnd) = readMPI(data, offset: pos) else { return nil }
         pos = nEnd
         guard let (e, _) = readMPI(data, offset: pos) else { return nil }
 
+        let fingerprint = computeFingerprint(data)
+        let keyID = Data(fingerprint.suffix(8))
+        return .rsa(keyID: keyID, n: n, e: e)
+    }
+
+    private static func parseECDHKeyPacket(_ data: Data) -> PGPKeyInfo? {
+        var pos = 6
+
+        guard pos < data.count else { return nil }
+        let oidLen = Int(data[pos])
+        pos += 1
+        guard pos + oidLen <= data.count else { return nil }
+        let oid = Data(data[pos..<pos + oidLen])
+        pos += oidLen
+
+        guard let (pubKeyMPI, mpiEnd) = readMPI(data, offset: pos) else { return nil }
+        pos = mpiEnd
+
+        let publicKey: Data
+        if pubKeyMPI.count == 33 && pubKeyMPI[0] == 0x40 {
+            publicKey = Data(pubKeyMPI[1...])
+        } else if pubKeyMPI.count == 32 {
+            publicKey = pubKeyMPI
+        } else {
+            return nil
+        }
+
+        guard pos < data.count else { return nil }
+        let kdfLen = Int(data[pos])
+        pos += 1
+        guard pos + kdfLen <= data.count, kdfLen >= 3 else { return nil }
+        let kdfHash = data[pos + 1]
+        let kdfSym = data[pos + 2]
+
+        let fingerprint = computeFingerprint(data)
+        let keyID = Data(fingerprint.suffix(8))
+        return .ecdh(keyID: keyID, publicKey: publicKey, oid: oid, kdfHash: kdfHash, kdfSym: kdfSym, fingerprint: fingerprint)
+    }
+
+    private static func computeFingerprint(_ packetBody: Data) -> Data {
         var hashInput = Data()
         hashInput.append(0x99)
-        hashInput.append(UInt8(data.count >> 8))
-        hashInput.append(UInt8(data.count & 0xFF))
-        hashInput.append(data)
-        let hash = sha1(hashInput)
-        let keyID = Data(hash.suffix(8))
-
-        return (keyID, n, e)
+        hashInput.append(UInt8(packetBody.count >> 8))
+        hashInput.append(UInt8(packetBody.count & 0xFF))
+        hashInput.append(packetBody)
+        return sha1(hashInput)
     }
 
     private static func readMPI(_ data: Data, offset: Int) -> (value: Data, endOffset: Int)? {
@@ -133,11 +180,29 @@ public enum AttachmentCrypto {
         }
     }
 
-    // MARK: - RSA
+    // MARK: - RSA key packet
+
+    private static func buildRSAKeyPacket(sessionKey: Data, keyID: Data, n: Data, e: Data) throws -> Data {
+        var block = Data()
+        block.append(9) // AES-256
+        block.append(sessionKey)
+        let checksum: UInt16 = sessionKey.reduce(0) { $0 &+ UInt16($1) }
+        block.append(UInt8(checksum >> 8))
+        block.append(UInt8(checksum & 0xFF))
+
+        let encrypted = try rsaEncrypt(data: block, n: n, e: e)
+
+        var body = Data()
+        body.append(3)
+        body.append(keyID)
+        body.append(1)
+        appendMPI(encrypted, to: &body)
+
+        return ClearBodyEncryptor.buildPacket(tag: 1, body: body)
+    }
 
     private static func rsaEncrypt(data: Data, n: Data, e: Data) throws -> Data {
         let derKey = buildDERPublicKey(n: n, e: e)
-
         let attributes: [CFString: Any] = [
             kSecAttrKeyType: kSecAttrKeyTypeRSA,
             kSecAttrKeyClass: kSecAttrKeyClassPublic,
@@ -146,23 +211,18 @@ public enum AttachmentCrypto {
         guard let secKey = SecKeyCreateWithData(derKey as CFData, attributes as CFDictionary, &error) else {
             throw EncryptionError.encryptionFailed("Failed to create RSA key")
         }
-
         guard let encrypted = SecKeyCreateEncryptedData(secKey, .rsaEncryptionPKCS1, data as CFData, &error) else {
             throw EncryptionError.encryptionFailed("RSA encryption failed")
         }
-
         return encrypted as Data
     }
 
     private static func buildDERPublicKey(n: Data, e: Data) -> Data {
-        let nDER = derInteger(n)
-        let eDER = derInteger(e)
-        return derSequence(nDER + eDER)
+        derSequence(derInteger(n) + derInteger(e))
     }
 
     private static func derInteger(_ data: Data) -> Data {
-        var result = Data()
-        result.append(0x02)
+        var result = Data([0x02])
         var value = data
         if let first = value.first, first & 0x80 != 0 {
             value.insert(0x00, at: 0)
@@ -173,8 +233,7 @@ public enum AttachmentCrypto {
     }
 
     private static func derSequence(_ content: Data) -> Data {
-        var result = Data()
-        result.append(0x30)
+        var result = Data([0x30])
         result.append(contentsOf: derLength(content.count))
         result.append(content)
         return result
@@ -184,6 +243,140 @@ public enum AttachmentCrypto {
         if length < 0x80 { return [UInt8(length)] }
         if length <= 0xFF { return [0x81, UInt8(length)] }
         return [0x82, UInt8(length >> 8), UInt8(length & 0xFF)]
+    }
+
+    // MARK: - ECDH (Curve25519) key packet
+
+    private static func buildECDHKeyPacket(
+        sessionKey: Data, keyID: Data, publicKey: Data,
+        oid: Data, kdfHash: UInt8, kdfSym: UInt8, fingerprint: Data
+    ) throws -> Data {
+        guard publicKey.count == 32 else {
+            throw EncryptionError.encryptionFailed("Invalid Curve25519 public key size")
+        }
+
+        let ephemeralPrivate = Curve25519.KeyAgreement.PrivateKey()
+        let ephemeralPublic = ephemeralPrivate.publicKey
+        let recipientKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: publicKey)
+        let sharedSecret = try ephemeralPrivate.sharedSecretFromKeyAgreement(with: recipientKey)
+
+        let kek = ecdhKDF(
+            sharedSecret: sharedSecret, oid: oid,
+            kdfHash: kdfHash, kdfSym: kdfSym, fingerprint: fingerprint
+        )
+
+        var m = Data()
+        m.append(9) // AES-256
+        m.append(sessionKey)
+        let checksum: UInt16 = sessionKey.reduce(0) { $0 &+ UInt16($1) }
+        m.append(UInt8(checksum >> 8))
+        m.append(UInt8(checksum & 0xFF))
+        let padLen = 8 - (m.count % 8)
+        for _ in 0..<padLen {
+            m.append(UInt8(padLen))
+        }
+
+        let wrapped = try aesKeyWrap(kek: kek, plaintext: m)
+
+        var body = Data()
+        body.append(3)
+        body.append(keyID)
+        body.append(18) // ECDH
+
+        var ephPub = Data([0x40])
+        ephPub.append(ephemeralPublic.rawRepresentation)
+        appendMPI(ephPub, to: &body)
+
+        body.append(UInt8(wrapped.count))
+        body.append(wrapped)
+
+        return ClearBodyEncryptor.buildPacket(tag: 1, body: body)
+    }
+
+    private static func ecdhKDF(
+        sharedSecret: SharedSecret, oid: Data,
+        kdfHash: UInt8, kdfSym: UInt8, fingerprint: Data
+    ) -> Data {
+        var param = Data()
+        param.append(UInt8(oid.count))
+        param.append(oid)
+        param.append(18)
+        param.append(contentsOf: [0x03, 0x01, kdfHash, kdfSym])
+        param.append("Anonymous Sender    ".data(using: .utf8)!)
+        param.append(fingerprint)
+
+        let sharedSecretData = sharedSecret.withUnsafeBytes { Data(bytes: $0.baseAddress!, count: $0.count) }
+        var hashInput = Data([0x00, 0x00, 0x00, 0x01])
+        hashInput.append(sharedSecretData)
+        hashInput.append(param)
+
+        let hash: Data
+        switch kdfHash {
+        case 8: hash = sha256(hashInput)
+        case 10: hash = sha512(hashInput)
+        default: hash = sha256(hashInput)
+        }
+
+        let keySize: Int
+        switch kdfSym {
+        case 7: keySize = 16  // AES-128
+        case 8: keySize = 24  // AES-192
+        case 9: keySize = 32  // AES-256
+        default: keySize = 16
+        }
+
+        return Data(hash.prefix(keySize))
+    }
+
+    // RFC 3394 AES Key Wrap
+    private static func aesKeyWrap(kek: Data, plaintext: Data) throws -> Data {
+        let n = plaintext.count / 8
+        guard n >= 2 else {
+            throw EncryptionError.encryptionFailed("AES Key Wrap: plaintext too short")
+        }
+
+        var a: [UInt8] = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6]
+        var r = (0..<n).map { i in Array(plaintext[i*8..<(i+1)*8]) }
+
+        for j in 0..<6 {
+            for i in 0..<n {
+                let block = Data(a + r[i])
+                let encrypted = try aesECBEncryptBlock(key: kek, block: block)
+                let t = UInt64(n * j + i + 1)
+                a = Array(encrypted[0..<8])
+                withUnsafeBytes(of: t.bigEndian) { tPtr in
+                    for k in 0..<8 { a[k] ^= tPtr[k] }
+                }
+                r[i] = Array(encrypted[8..<16])
+            }
+        }
+
+        var result = Data(a)
+        for i in 0..<n { result.append(contentsOf: r[i]) }
+        return result
+    }
+
+    private static func aesECBEncryptBlock(key: Data, block: Data) throws -> Data {
+        var output = [UInt8](repeating: 0, count: 32)
+        var outputLen = 0
+        let status = key.withUnsafeBytes { keyPtr in
+            block.withUnsafeBytes { blockPtr in
+                CCCrypt(
+                    CCOperation(kCCEncrypt),
+                    CCAlgorithm(kCCAlgorithmAES),
+                    CCOptions(kCCOptionECBMode),
+                    keyPtr.baseAddress, key.count,
+                    nil,
+                    blockPtr.baseAddress, 16,
+                    &output, 32,
+                    &outputLen
+                )
+            }
+        }
+        guard status == kCCSuccess else {
+            throw EncryptionError.encryptionFailed("AES-ECB encrypt failed")
+        }
+        return Data(output.prefix(outputLen))
     }
 
     // MARK: - Packet parsing
@@ -306,9 +499,19 @@ public enum AttachmentCrypto {
 
     private static func sha1(_ data: Data) -> Data {
         var hash = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
-        data.withUnsafeBytes { ptr in
-            _ = CC_SHA1(ptr.baseAddress, CC_LONG(data.count), &hash)
-        }
+        data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &hash) }
+        return Data(hash)
+    }
+
+    private static func sha256(_ data: Data) -> Data {
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash) }
+        return Data(hash)
+    }
+
+    private static func sha512(_ data: Data) -> Data {
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA512_DIGEST_LENGTH))
+        data.withUnsafeBytes { _ = CC_SHA512($0.baseAddress, CC_LONG(data.count), &hash) }
         return Data(hash)
     }
 }
