@@ -8,11 +8,18 @@ struct ContentView: View {
         Group {
             let _ = ProtonClient.debugLog("ContentView: isRestoring=\(session.isRestoring) isLoggedIn=\(session.isLoggedIn) accounts=\(session.accountStore.accounts.count)")
             if session.isRestoring {
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
+                    if let icon = NSImage(named: "AppIcon") {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 96, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                    }
                     ProgressView()
-                        .controlSize(.large)
+                        .controlSize(.regular)
                     Text("Restoring session...")
                         .foregroundStyle(.secondary)
+                        .font(.callout)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
