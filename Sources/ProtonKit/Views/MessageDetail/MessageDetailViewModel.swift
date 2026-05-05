@@ -1,6 +1,12 @@
 import SwiftUI
 import ProtonCore
 
+private struct CachedMessage {
+    let message: FullMessage
+    let bodyHTML: String
+    let rawDecryptedBody: String
+}
+
 @MainActor
 final class MessageDetailViewModel: ObservableObject {
     @Published var message: FullMessage?
@@ -9,7 +15,17 @@ final class MessageDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    private static var cache: [String: CachedMessage] = [:]
+
     func load(client: ProtonClient, messageID: String, decryptor: MessageDecryptor? = nil) async {
+        if let cached = Self.cache[messageID] {
+            message = cached.message
+            bodyHTML = cached.bodyHTML
+            rawDecryptedBody = cached.rawDecryptedBody
+            try? await MessageAPI.markRead(client: client, messageIDs: [messageID])
+            return
+        }
+
         isLoading = true
         errorMessage = nil
 
@@ -30,11 +46,17 @@ final class MessageDetailViewModel: ObservableObject {
                 bodyHTML = HTMLSanitizer.sanitize(resp.message.body)
             }
 
+            Self.cache[messageID] = CachedMessage(message: resp.message, bodyHTML: bodyHTML, rawDecryptedBody: rawDecryptedBody)
+
             try? await MessageAPI.markRead(client: client, messageIDs: [messageID])
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    static func invalidate(_ messageID: String) {
+        cache.removeValue(forKey: messageID)
     }
 }
