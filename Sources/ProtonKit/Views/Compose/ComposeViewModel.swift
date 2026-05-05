@@ -122,10 +122,11 @@ final class ComposeViewModel: ObservableObject {
             let toAddresses = parseRecipients(toText)
             let ccAddresses = parseRecipients(ccText)
 
-            if let draftID = existingDraftID {
-                let _ = try await MessageAPI.updateDraft(
+            let draftID: String
+            if let existing = existingDraftID {
+                let resp = try await MessageAPI.updateDraft(
                     client: session.client,
-                    messageID: draftID,
+                    messageID: existing,
                     subject: subject,
                     body: encryptedBody,
                     senderAddressID: address.id,
@@ -134,9 +135,10 @@ final class ComposeViewModel: ObservableObject {
                     toList: toAddresses,
                     ccList: ccAddresses
                 )
+                draftID = resp.message.id
             } else {
                 let (parentID, action) = replyParams()
-                let _ = try await MessageAPI.createDraft(
+                let resp = try await MessageAPI.createDraft(
                     client: session.client,
                     subject: subject,
                     body: encryptedBody,
@@ -148,7 +150,30 @@ final class ComposeViewModel: ObservableObject {
                     parentID: parentID,
                     action: action
                 )
+                draftID = resp.message.id
             }
+
+            if !attachments.isEmpty {
+                let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
+                if let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty {
+                    for att in attachments {
+                        let encrypted = try AttachmentCrypto.encrypt(data: att.data)
+                        let keyPacket = try AttachmentCrypto.buildKeyPacket(
+                            sessionKey: encrypted.sessionKey,
+                            armoredPublicKey: senderPubKey
+                        )
+                        let _ = try await MessageAPI.uploadAttachment(
+                            client: session.client,
+                            messageID: draftID,
+                            fileName: att.fileName,
+                            mimeType: att.mimeType,
+                            keyPackets: keyPacket,
+                            dataPacket: encrypted.dataPacket
+                        )
+                    }
+                }
+            }
+
             didSaveDraft = true
         } catch {
             errorMessage = error.localizedDescription
@@ -207,21 +232,28 @@ final class ComposeViewModel: ObservableObject {
                 draftID = resp.message.id
             }
 
+            // Encrypt and upload attachments, collecting (attachmentID, sessionKey) pairs
+            var uploadedAttachments: [(id: String, sessionKey: Data)] = []
             if !attachments.isEmpty {
                 let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
-                if let pubKey = senderKeyResp.keys.first?.publicKey, !pubKey.isEmpty {
-                    let attEncryptor = MessageEncryptor()
-                    for att in attachments {
-                        let split = try attEncryptor.encryptAttachment(data: att.data, armoredPublicKey: pubKey)
-                        let _ = try await MessageAPI.uploadAttachment(
-                            client: session.client,
-                            messageID: draftID,
-                            fileName: att.fileName,
-                            mimeType: att.mimeType,
-                            keyPackets: split.keyPacket,
-                            dataPacket: split.dataPacket
-                        )
-                    }
+                guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
+                    throw EncryptionError.encryptionFailed("No sender public key for attachment encryption")
+                }
+                for att in attachments {
+                    let encrypted = try AttachmentCrypto.encrypt(data: att.data)
+                    let keyPacket = try AttachmentCrypto.buildKeyPacket(
+                        sessionKey: encrypted.sessionKey,
+                        armoredPublicKey: senderPubKey
+                    )
+                    let resp = try await MessageAPI.uploadAttachment(
+                        client: session.client,
+                        messageID: draftID,
+                        fileName: att.fileName,
+                        mimeType: att.mimeType,
+                        keyPackets: keyPacket,
+                        dataPacket: encrypted.dataPacket
+                    )
+                    uploadedAttachments.append((id: resp.attachment.id, sessionKey: encrypted.sessionKey))
                 }
             }
 
@@ -240,9 +272,23 @@ final class ComposeViewModel: ObservableObject {
                         plaintext: wrappedBody,
                         recipientArmoredPublicKey: pubKey
                     )
+                    // Build per-recipient attachment key packets
+                    var attKeyPackets: [String: String]?
+                    if !uploadedAttachments.isEmpty {
+                        var dict: [String: String] = [:]
+                        for uploaded in uploadedAttachments {
+                            let recipientKeyPacket = try AttachmentCrypto.buildKeyPacket(
+                                sessionKey: uploaded.sessionKey,
+                                armoredPublicKey: pubKey
+                            )
+                            dict[uploaded.id] = recipientKeyPacket.base64EncodedString()
+                        }
+                        attKeyPackets = dict
+                    }
                     internalAddrs[recipient.address] = SendAddress(
                         type: 1,
-                        bodyKeyPacket: split.keyPacket.base64EncodedString()
+                        bodyKeyPacket: split.keyPacket.base64EncodedString(),
+                        attachmentKeyPackets: attKeyPackets
                     )
                     if internalBody == nil {
                         internalBody = split.dataPacket.base64EncodedString()
@@ -264,6 +310,18 @@ final class ComposeViewModel: ObservableObject {
             if !clearAddrs.isEmpty {
                 let signedBody = try session.decryptor.sign(data: Data(wrappedBody.utf8))
                 let clearEncrypted = try ClearBodyEncryptor.encryptSignedContent(signedBody)
+                // For cleartext recipients, provide raw session keys for attachments
+                var attKeys: [String: SessionKey]?
+                if !uploadedAttachments.isEmpty {
+                    var dict: [String: SessionKey] = [:]
+                    for uploaded in uploadedAttachments {
+                        dict[uploaded.id] = SessionKey(
+                            key: uploaded.sessionKey.base64EncodedString(),
+                            algorithm: "aes256"
+                        )
+                    }
+                    attKeys = dict
+                }
                 packages.append(SendPackage(
                     addresses: clearAddrs,
                     mimeType: "text/html",
@@ -272,7 +330,8 @@ final class ComposeViewModel: ObservableObject {
                     bodyKey: SessionKey(
                         key: clearEncrypted.sessionKey.base64EncodedString(),
                         algorithm: clearEncrypted.algorithm
-                    )
+                    ),
+                    attachmentKeys: attKeys
                 ))
             }
 

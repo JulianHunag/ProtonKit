@@ -122,6 +122,7 @@ public struct SendPackage: Encodable {
     public let body: String
     public let packageType: Int
     public let bodyKey: SessionKey?
+    public let attachmentKeys: [String: SessionKey]?
 
     enum CodingKeys: String, CodingKey {
         case addresses = "Addresses"
@@ -129,14 +130,16 @@ public struct SendPackage: Encodable {
         case body = "Body"
         case packageType = "Type"
         case bodyKey = "BodyKey"
+        case attachmentKeys = "AttachmentKeys"
     }
 
-    public init(addresses: [String: SendAddress], mimeType: String, body: String, type: Int, bodyKey: SessionKey? = nil) {
+    public init(addresses: [String: SendAddress], mimeType: String, body: String, type: Int, bodyKey: SessionKey? = nil, attachmentKeys: [String: SessionKey]? = nil) {
         self.addresses = addresses
         self.mimeType = mimeType
         self.body = body
         self.packageType = type
         self.bodyKey = bodyKey
+        self.attachmentKeys = attachmentKeys
     }
 }
 
@@ -144,17 +147,20 @@ public struct SendAddress: Encodable {
     public let addressType: Int
     public let bodyKeyPacket: String
     public let signature: Int
+    public let attachmentKeyPackets: [String: String]?
 
     enum CodingKeys: String, CodingKey {
         case addressType = "Type"
         case bodyKeyPacket = "BodyKeyPacket"
         case signature = "Signature"
+        case attachmentKeyPackets = "AttachmentKeyPackets"
     }
 
-    public init(type: Int, bodyKeyPacket: String, signature: Int = 0) {
+    public init(type: Int, bodyKeyPacket: String, signature: Int = 0, attachmentKeyPackets: [String: String]? = nil) {
         self.addressType = type
         self.bodyKeyPacket = bodyKeyPacket
         self.signature = signature
+        self.attachmentKeyPackets = attachmentKeyPackets
     }
 }
 
