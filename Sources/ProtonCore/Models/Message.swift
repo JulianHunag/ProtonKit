@@ -191,3 +191,21 @@ public struct MessageResponse: Decodable {
         case message = "Message"
     }
 }
+
+public struct AttachmentResponse: Decodable {
+    public let code: Int
+    public let attachment: AttachmentMeta
+
+    enum CodingKeys: String, CodingKey {
+        case code = "Code"
+        case attachment = "Attachment"
+    }
+
+    public struct AttachmentMeta: Decodable {
+        public let id: String
+
+        enum CodingKeys: String, CodingKey {
+            case id = "ID"
+        }
+    }
+}

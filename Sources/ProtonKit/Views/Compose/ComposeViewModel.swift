@@ -4,6 +4,7 @@ import ProtonCore
 enum ComposeMode: Identifiable {
     case reply(FullMessage)
     case replyAll(FullMessage)
+    case forward(FullMessage)
     case newMessage
     case editDraft(FullMessage, decryptedHTML: String)
 
@@ -11,8 +12,32 @@ enum ComposeMode: Identifiable {
         switch self {
         case .reply(let msg): return "reply-\(msg.id)"
         case .replyAll(let msg): return "replyAll-\(msg.id)"
+        case .forward(let msg): return "forward-\(msg.id)"
         case .newMessage: return "new"
         case .editDraft(let msg, _): return "editDraft-\(msg.id)"
+        }
+    }
+}
+
+struct ComposeAttachment: Identifiable {
+    let id = UUID()
+    let url: URL
+    let data: Data
+    var fileName: String { url.lastPathComponent }
+    var mimeType: String {
+        switch url.pathExtension.lowercased() {
+        case "pdf": return "application/pdf"
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "gif": return "image/gif"
+        case "txt": return "text/plain"
+        case "html", "htm": return "text/html"
+        case "zip": return "application/zip"
+        case "doc": return "application/msword"
+        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "xls": return "application/vnd.ms-excel"
+        case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        default: return "application/octet-stream"
         }
     }
 }
@@ -23,6 +48,7 @@ final class ComposeViewModel: ObservableObject {
     @Published var ccText = ""
     @Published var subject = ""
     @Published var bodyText = ""
+    @Published var attachments: [ComposeAttachment] = []
     @Published var isSending = false
     @Published var isSavingDraft = false
     @Published var errorMessage: String?
@@ -49,6 +75,11 @@ final class ComposeViewModel: ObservableObject {
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject.hasPrefix("Re: ") ? msg.subject : "Re: \(msg.subject)"
             self.bodyText = Self.buildQuotedBody(msg)
+        case .forward(let msg):
+            self.originalMessage = msg
+            self.existingDraftID = nil
+            self.subject = msg.subject.hasPrefix("Fwd: ") ? msg.subject : "Fwd: \(msg.subject)"
+            self.bodyText = Self.buildForwardBody(msg)
         case .newMessage:
             self.originalMessage = nil
             self.existingDraftID = nil
@@ -60,6 +91,20 @@ final class ComposeViewModel: ObservableObject {
             self.subject = msg.subject
             self.bodyText = Self.htmlToPlainText(decryptedHTML)
         }
+    }
+
+    func addAttachments(urls: [URL]) {
+        for url in urls {
+            guard url.startAccessingSecurityScopedResource() else { continue }
+            defer { url.stopAccessingSecurityScopedResource() }
+            if let data = try? Data(contentsOf: url) {
+                attachments.append(ComposeAttachment(url: url, data: data))
+            }
+        }
+    }
+
+    func removeAttachment(_ attachment: ComposeAttachment) {
+        attachments.removeAll { $0.id == attachment.id }
     }
 
     func saveDraft(session: SessionManager) async {
@@ -162,6 +207,24 @@ final class ComposeViewModel: ObservableObject {
                 draftID = resp.message.id
             }
 
+            if !attachments.isEmpty {
+                let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
+                if let pubKey = senderKeyResp.keys.first?.publicKey, !pubKey.isEmpty {
+                    let attEncryptor = MessageEncryptor()
+                    for att in attachments {
+                        let split = try attEncryptor.encryptAttachment(data: att.data, armoredPublicKey: pubKey)
+                        let _ = try await MessageAPI.uploadAttachment(
+                            client: session.client,
+                            messageID: draftID,
+                            fileName: att.fileName,
+                            mimeType: att.mimeType,
+                            keyPackets: split.keyPacket,
+                            dataPacket: split.dataPacket
+                        )
+                    }
+                }
+            }
+
             let allRecipients = toAddresses + ccAddresses
             var internalAddrs: [String: SendAddress] = [:]
             var internalBody: String?
@@ -252,6 +315,8 @@ final class ComposeViewModel: ObservableObject {
             return (msg.id, 0)
         case .replyAll(let msg) where !msg.labelIDs.contains("8"):
             return (msg.id, 1)
+        case .forward(let msg) where !msg.labelIDs.contains("8"):
+            return (msg.id, 2)
         default:
             return (nil, nil)
         }
@@ -268,6 +333,20 @@ final class ComposeViewModel: ObservableObject {
         let date = Date(timeIntervalSince1970: msg.time)
             .formatted(.dateTime.year().month().day().hour().minute())
         return "\n\n--- On \(date), \(msg.senderName) wrote ---\n"
+    }
+
+    private static func buildForwardBody(_ msg: FullMessage) -> String {
+        let date = Date(timeIntervalSince1970: msg.time)
+            .formatted(.dateTime.year().month().day().hour().minute())
+        var body = "\n\n---------- Forwarded message ----------\n"
+        body += "From: \(msg.senderName) <\(msg.senderAddress)>\n"
+        body += "Date: \(date)\n"
+        body += "Subject: \(msg.subject)\n"
+        if !msg.toList.isEmpty {
+            body += "To: \(msg.toList.map(\.address).joined(separator: ", "))\n"
+        }
+        body += "\n"
+        return body
     }
 
     private static func htmlToPlainText(_ html: String) -> String {

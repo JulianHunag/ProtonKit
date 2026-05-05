@@ -13,10 +13,10 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
     private var timer: Timer?
     private weak var accountStore: AccountStore?
 
-    var pollInterval: TimeInterval = 300
+    var pollInterval: TimeInterval = 30
 
-    private var lastSeenTimestamps: [String: TimeInterval] = [:]
-    private let lastSeenKey = "protonkit.notificationLastSeen"
+    private var lastEventIDs: [String: String] = [:]
+    private let lastEventKey = "protonkit.lastEventIDs"
 
     @Published var pendingNavigation: NotificationNavigation?
     @Published var newMailDetected: Int = 0
@@ -24,7 +24,7 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
 
     override init() {
         super.init()
-        loadLastSeen()
+        loadLastEventIDs()
         UNUserNotificationCenter.current().delegate = self
     }
 
@@ -47,9 +47,9 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
 
     func startPolling() {
         stopPolling()
-        ProtonClient.debugLog("NotificationService: starting poll every \(Int(pollInterval))s")
+        ProtonClient.debugLog("NotificationService: starting event poll every \(Int(pollInterval))s")
 
-        initializeLastSeen()
+        Task { await initializeEventIDs() }
 
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -64,16 +64,21 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
         timer = nil
     }
 
-    // MARK: - Polling
+    // MARK: - Event Polling
 
-    private func initializeLastSeen() {
+    private func initializeEventIDs() async {
         guard let accounts = accountStore?.accounts else { return }
         for account in accounts {
-            if lastSeenTimestamps[account.uid] == nil {
-                lastSeenTimestamps[account.uid] = Date().timeIntervalSince1970
+            if lastEventIDs[account.uid] == nil {
+                do {
+                    let eventID = try await EventAPI.getLatestEventID(client: account.client)
+                    lastEventIDs[account.uid] = eventID
+                } catch {
+                    ProtonClient.debugLog("NotificationService: failed to get latest event for \(account.email): \(error)")
+                }
             }
         }
-        persistLastSeen()
+        persistLastEventIDs()
     }
 
     private func pollAllAccounts() async {
@@ -81,40 +86,52 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
 
         var totalUnread = 0
         for account in accounts {
-            await checkAccount(account)
+            await pollAccount(account)
             totalUnread += await inboxUnreadCount(account)
         }
 
         updateDockBadge(totalUnread)
     }
 
-    private func checkAccount(_ context: AccountContext) async {
+    private func pollAccount(_ context: AccountContext) async {
+        guard let eventID = lastEventIDs[context.uid] else {
+            do {
+                let id = try await EventAPI.getLatestEventID(client: context.client)
+                lastEventIDs[context.uid] = id
+                persistLastEventIDs()
+            } catch {
+                ProtonClient.debugLog("NotificationService: init event ID failed for \(context.email): \(error)")
+            }
+            return
+        }
+
         do {
-            let resp = try await MessageAPI.list(
-                client: context.client,
-                labelID: "0",
-                page: 0,
-                pageSize: 5
-            )
+            var currentEventID = eventID
+            var hasMore = true
 
-            let lastSeen = lastSeenTimestamps[context.uid] ?? 0
+            while hasMore {
+                let resp = try await EventAPI.getEvents(client: context.client, eventID: currentEventID)
+                currentEventID = resp.eventID
+                hasMore = resp.more == 1
 
-            let newMessages = resp.messages.filter { $0.time > lastSeen && $0.unread == 1 }
-
-            for msg in newMessages {
-                postNotification(account: context, message: msg)
+                if let messages = resp.messages {
+                    for event in messages {
+                        if event.action == MessageEvent.Action.create.rawValue,
+                           let msg = event.message, msg.unread == 1,
+                           msg.labelIDs.contains("0") {
+                            postNotification(account: context, message: msg)
+                            newMailDetected += 1
+                        }
+                    }
+                }
             }
 
-            if !newMessages.isEmpty {
-                newMailDetected += 1
-            }
-
-            if let newest = resp.messages.first, newest.time > lastSeen {
-                lastSeenTimestamps[context.uid] = newest.time
-                persistLastSeen()
+            if currentEventID != eventID {
+                lastEventIDs[context.uid] = currentEventID
+                persistLastEventIDs()
             }
         } catch {
-            ProtonClient.debugLog("NotificationService: poll failed for \(context.email): \(error)")
+            ProtonClient.debugLog("NotificationService: event poll failed for \(context.email): \(error)")
         }
     }
 
@@ -182,16 +199,16 @@ final class NotificationService: NSObject, ObservableObject, UNUserNotificationC
 
     // MARK: - Persistence
 
-    private func loadLastSeen() {
-        if let data = UserDefaults.standard.data(forKey: lastSeenKey),
-           let dict = try? JSONDecoder().decode([String: TimeInterval].self, from: data) {
-            lastSeenTimestamps = dict
+    private func loadLastEventIDs() {
+        if let data = UserDefaults.standard.data(forKey: lastEventKey),
+           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+            lastEventIDs = dict
         }
     }
 
-    private func persistLastSeen() {
-        if let data = try? JSONEncoder().encode(lastSeenTimestamps) {
-            UserDefaults.standard.set(data, forKey: lastSeenKey)
+    private func persistLastEventIDs() {
+        if let data = try? JSONEncoder().encode(lastEventIDs) {
+            UserDefaults.standard.set(data, forKey: lastEventKey)
         }
     }
 }

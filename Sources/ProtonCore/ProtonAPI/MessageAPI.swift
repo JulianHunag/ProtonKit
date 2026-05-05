@@ -150,6 +150,29 @@ public enum MessageAPI {
         )
     }
 
+    public static func uploadAttachment(
+        client: ProtonClient,
+        messageID: String,
+        fileName: String,
+        mimeType: String,
+        keyPackets: Data,
+        dataPacket: Data
+    ) async throws -> AttachmentResponse {
+        return try await client.uploadMultipart(
+            path: "mail/v4/attachments",
+            fields: [
+                (name: "Filename", value: fileName),
+                (name: "MIMEType", value: mimeType),
+                (name: "MessageID", value: messageID),
+                (name: "KeyPackets", value: keyPackets.base64EncodedString()),
+            ],
+            fileField: "DataPacket",
+            fileName: fileName,
+            mimeType: "application/octet-stream",
+            fileData: dataPacket
+        )
+    }
+
     public static func trash(client: ProtonClient, messageIDs: [String]) async throws {
         struct Req: Encodable {
             let IDs: [String]

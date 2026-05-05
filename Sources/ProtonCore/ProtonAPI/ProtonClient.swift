@@ -122,6 +122,57 @@ public actor ProtonClient {
         return data
     }
 
+    public func uploadMultipart<T: Decodable>(
+        path: String,
+        fields: [(name: String, value: String)],
+        fileField: String,
+        fileName: String,
+        mimeType: String,
+        fileData: Data
+    ) async throws -> T {
+        let boundary = "Boundary-\(UUID().uuidString)"
+        let url = URL(string: Self.baseURL.absoluteString + "/" + path)!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.setValue("Other", forHTTPHeaderField: "x-pm-appversion")
+        if let token = accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let uid {
+            req.setValue(uid, forHTTPHeaderField: "x-pm-uid")
+        }
+
+        var body = Data()
+        for field in fields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(field.name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(field.value)\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"\(fileField)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        req.httpBody = body
+
+        let (data, response) = try await session.data(for: req)
+        guard let httpResp = response as? HTTPURLResponse else {
+            throw ProtonAPIError.networkError(URLError(.badServerResponse))
+        }
+
+        Self.debugLog("POST(multipart) /\(path) → \(httpResp.statusCode) (\(data.count) bytes)")
+
+        guard (200..<300).contains(httpResp.statusCode) else {
+            let errorMsg = String(data: data, encoding: .utf8)
+            Self.debugLog("  HTTP error body: \(errorMsg ?? "nil")")
+            throw ProtonAPIError.httpError(statusCode: httpResp.statusCode, message: errorMsg)
+        }
+
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
     public func get<T: Decodable>(path: String, authenticated: Bool = true) async throws -> T {
         try await request(method: "GET", path: path, authenticated: authenticated)
     }

@@ -61,6 +61,22 @@ public final class MessageEncryptor {
         return Armor.armored(encrypted, as: .message)
     }
 
+    public func encryptAttachment(data: Data, armoredPublicKey: String) throws -> SplitMessage {
+        guard let keyData = armoredPublicKey.data(using: .utf8) else {
+            throw EncryptionError.encryptionFailed("Invalid public key encoding")
+        }
+        let pubKeys = try ObjectivePGP.readKeys(from: keyData)
+        guard !pubKeys.isEmpty else { throw EncryptionError.noSenderKey }
+
+        let encrypted = try ObjectivePGP.encrypt(
+            data,
+            addSignature: false,
+            using: pubKeys,
+            passphraseForKey: { _ in nil }
+        )
+        return try splitPGPMessage(encrypted)
+    }
+
     public func encryptForRecipient(plaintext: String, recipientArmoredPublicKey: String) throws -> SplitMessage {
         guard let keyData = recipientArmoredPublicKey.data(using: .utf8) else {
             throw EncryptionError.recipientKeyParseFailed("unknown")

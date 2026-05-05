@@ -34,6 +34,9 @@ struct MessageDetailView: View {
                                 Button(action: { composeMode = .replyAll(msg) }) {
                                     Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
                                 }
+                                Button(action: { composeMode = .forward(msg) }) {
+                                    Label("Forward", systemImage: "arrowshape.turn.up.right")
+                                }
                             }
                             Spacer()
                         }
