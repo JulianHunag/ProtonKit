@@ -58,6 +58,7 @@ final class ComposeViewModel: ObservableObject {
     let mode: ComposeMode
     private let originalMessage: FullMessage?
     private let existingDraftID: String?
+    private let forwardedHTML: String?
 
     init(mode: ComposeMode) {
         self.mode = mode
@@ -65,12 +66,14 @@ final class ComposeViewModel: ObservableObject {
         case .reply(let msg):
             self.originalMessage = msg
             self.existingDraftID = nil
+            self.forwardedHTML = nil
             self.toText = msg.senderAddress
             self.subject = msg.subject.hasPrefix("Re: ") ? msg.subject : "Re: \(msg.subject)"
             self.bodyText = Self.buildQuotedBody(msg)
         case .replyAll(let msg):
             self.originalMessage = msg
             self.existingDraftID = nil
+            self.forwardedHTML = nil
             self.toText = msg.senderAddress
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject.hasPrefix("Re: ") ? msg.subject : "Re: \(msg.subject)"
@@ -78,14 +81,17 @@ final class ComposeViewModel: ObservableObject {
         case .forward(let msg, let decryptedHTML):
             self.originalMessage = msg
             self.existingDraftID = nil
+            self.forwardedHTML = decryptedHTML
             self.subject = msg.subject.hasPrefix("Fwd: ") ? msg.subject : "Fwd: \(msg.subject)"
-            self.bodyText = Self.buildForwardBody(msg, decryptedHTML: decryptedHTML)
+            self.bodyText = Self.buildForwardHeader(msg)
         case .newMessage:
             self.originalMessage = nil
             self.existingDraftID = nil
+            self.forwardedHTML = nil
         case .editDraft(let msg, let decryptedHTML):
             self.originalMessage = msg
             self.existingDraftID = msg.id
+            self.forwardedHTML = nil
             self.toText = msg.toList.map(\.address).joined(separator: ", ")
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject
@@ -355,7 +361,14 @@ final class ComposeViewModel: ObservableObject {
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\n", with: "<br>")
-        let wrappedBody = "<html><body>\(htmlBody)</body></html>"
+
+        let wrappedBody: String
+        if let fwdHTML = forwardedHTML {
+            let originalBody = Self.extractBodyContent(fwdHTML)
+            wrappedBody = "<html><body>\(htmlBody)<br><div>\(originalBody)</div></body></html>"
+        } else {
+            wrappedBody = "<html><body>\(htmlBody)</body></html>"
+        }
 
         let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
         guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
@@ -394,19 +407,26 @@ final class ComposeViewModel: ObservableObject {
         return "\n\n--- On \(date), \(msg.senderName) wrote ---\n"
     }
 
-    private static func buildForwardBody(_ msg: FullMessage, decryptedHTML: String) -> String {
+    private static func buildForwardHeader(_ msg: FullMessage) -> String {
         let date = Date(timeIntervalSince1970: msg.time)
             .formatted(.dateTime.year().month().day().hour().minute())
-        var body = "\n\n---------- Forwarded message ----------\n"
-        body += "From: \(msg.senderName) <\(msg.senderAddress)>\n"
-        body += "Date: \(date)\n"
-        body += "Subject: \(msg.subject)\n"
+        var header = "\n\n---------- Forwarded message ----------\n"
+        header += "From: \(msg.senderName) <\(msg.senderAddress)>\n"
+        header += "Date: \(date)\n"
+        header += "Subject: \(msg.subject)\n"
         if !msg.toList.isEmpty {
-            body += "To: \(msg.toList.map(\.address).joined(separator: ", "))\n"
+            header += "To: \(msg.toList.map(\.address).joined(separator: ", "))\n"
         }
-        body += "\n"
-        body += htmlToPlainText(decryptedHTML)
-        return body
+        return header
+    }
+
+    private static func extractBodyContent(_ html: String) -> String {
+        if let bodyStart = html.range(of: "<body", options: .caseInsensitive),
+           let bodyTagEnd = html[bodyStart.upperBound...].range(of: ">"),
+           let bodyEnd = html.range(of: "</body>", options: .caseInsensitive) {
+            return String(html[bodyTagEnd.upperBound..<bodyEnd.lowerBound])
+        }
+        return html
     }
 
     private static func htmlToPlainText(_ html: String) -> String {
