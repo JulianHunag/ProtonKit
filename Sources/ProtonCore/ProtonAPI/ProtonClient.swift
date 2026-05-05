@@ -35,11 +35,56 @@ public actor ProtonClient {
         accessToken != nil
     }
 
+    // MARK: - Token auto-refresh
+
+    private var refreshTask: Task<Void, Error>?
+
+    private func refreshTokens() async throws {
+        if let existing = refreshTask {
+            try await existing.value
+            return
+        }
+        Self.debugLog("401 received, refreshing token...")
+        let task = Task {
+            try await AuthAPI.refresh(client: self)
+        }
+        refreshTask = task
+        do {
+            try await task.value
+            if let uid, let accessToken, let refreshToken {
+                try? KeychainStore.save(key: "accessToken", string: accessToken, namespace: uid)
+                try? KeychainStore.save(key: "refreshToken", string: refreshToken, namespace: uid)
+            }
+            Self.debugLog("Token refreshed successfully")
+            refreshTask = nil
+        } catch {
+            Self.debugLog("Token refresh failed: \(error)")
+            refreshTask = nil
+            throw error
+        }
+    }
+
+    // MARK: - HTTP methods
+
     public func request<T: Decodable>(
         method: String,
         path: String,
         body: (any Encodable)? = nil,
         authenticated: Bool = true
+    ) async throws -> T {
+        do {
+            return try await _doRequest(method: method, path: path, body: body, authenticated: authenticated)
+        } catch ProtonAPIError.unauthorized where authenticated {
+            try await refreshTokens()
+            return try await _doRequest(method: method, path: path, body: body, authenticated: authenticated)
+        }
+    }
+
+    private func _doRequest<T: Decodable>(
+        method: String,
+        path: String,
+        body: (any Encodable)? = nil,
+        authenticated: Bool
     ) async throws -> T {
         let url = URL(string: Self.baseURL.absoluteString + "/" + path)!
         var req = URLRequest(url: url)
@@ -102,6 +147,15 @@ public actor ProtonClient {
     }
 
     public func getRawData(path: String) async throws -> Data {
+        do {
+            return try await _doGetRawData(path: path)
+        } catch ProtonAPIError.unauthorized {
+            try await refreshTokens()
+            return try await _doGetRawData(path: path)
+        }
+    }
+
+    private func _doGetRawData(path: String) async throws -> Data {
         let url = URL(string: Self.baseURL.absoluteString + "/" + path)!
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
@@ -113,16 +167,33 @@ public actor ProtonClient {
             req.setValue(uid, forHTTPHeaderField: "x-pm-uid")
         }
         let (data, response) = try await session.data(for: req)
-        guard let httpResp = response as? HTTPURLResponse,
-              (200..<300).contains(httpResp.statusCode) else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw ProtonAPIError.httpError(statusCode: code, message: nil)
+        guard let httpResp = response as? HTTPURLResponse else {
+            throw ProtonAPIError.networkError(URLError(.badServerResponse))
+        }
+        if httpResp.statusCode == 401 {
+            throw ProtonAPIError.unauthorized
+        }
+        guard (200..<300).contains(httpResp.statusCode) else {
+            throw ProtonAPIError.httpError(statusCode: httpResp.statusCode, message: nil)
         }
         Self.debugLog("GET(raw) /\(path) → \(httpResp.statusCode) (\(data.count) bytes)")
         return data
     }
 
     public func uploadMultipart<T: Decodable>(
+        path: String,
+        fields: [(name: String, value: String)],
+        files: [(name: String, fileName: String, mimeType: String, data: Data)]
+    ) async throws -> T {
+        do {
+            return try await _doUploadMultipart(path: path, fields: fields, files: files)
+        } catch ProtonAPIError.unauthorized {
+            try await refreshTokens()
+            return try await _doUploadMultipart(path: path, fields: fields, files: files)
+        }
+    }
+
+    private func _doUploadMultipart<T: Decodable>(
         path: String,
         fields: [(name: String, value: String)],
         files: [(name: String, fileName: String, mimeType: String, data: Data)]
@@ -164,6 +235,9 @@ public actor ProtonClient {
 
         Self.debugLog("POST(multipart) /\(path) → \(httpResp.statusCode) (\(data.count) bytes)")
 
+        if httpResp.statusCode == 401 {
+            throw ProtonAPIError.unauthorized
+        }
         guard (200..<300).contains(httpResp.statusCode) else {
             let errorMsg = String(data: data, encoding: .utf8)
             Self.debugLog("  HTTP error body: \(errorMsg ?? "nil")")
