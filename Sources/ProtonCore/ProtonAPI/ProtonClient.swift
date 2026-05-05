@@ -125,10 +125,7 @@ public actor ProtonClient {
     public func uploadMultipart<T: Decodable>(
         path: String,
         fields: [(name: String, value: String)],
-        fileField: String,
-        fileName: String,
-        mimeType: String,
-        fileData: Data
+        files: [(name: String, fileName: String, mimeType: String, data: Data)]
     ) async throws -> T {
         let boundary = "Boundary-\(UUID().uuidString)"
         let url = URL(string: Self.baseURL.absoluteString + "/" + path)!
@@ -149,11 +146,14 @@ public actor ProtonClient {
             body.append("Content-Disposition: form-data; name=\"\(field.name)\"\r\n\r\n".data(using: .utf8)!)
             body.append("\(field.value)\r\n".data(using: .utf8)!)
         }
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"\(fileField)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        for file in files {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(file.name)\"; filename=\"\(file.fileName)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(file.mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(file.data)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
         req.httpBody = body
 
