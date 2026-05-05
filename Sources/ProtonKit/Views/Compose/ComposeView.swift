@@ -15,7 +15,7 @@ struct ComposeView: View {
                 .font(.body)
                 .frame(minHeight: 200)
 
-            if !vm.attachments.isEmpty {
+            if !vm.existingAttachments.isEmpty || !vm.attachments.isEmpty {
                 attachmentList
             }
 
@@ -47,6 +47,19 @@ struct ComposeView: View {
     private var attachmentList: some View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
+            ForEach(vm.existingAttachments) { att in
+                HStack(spacing: 6) {
+                    Image(systemName: "paperclip")
+                        .foregroundStyle(.secondary)
+                    Text(att.fileName)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Text(formatSize(att.size))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
             ForEach(vm.attachments) { att in
                 HStack(spacing: 6) {
                     Image(systemName: "paperclip")

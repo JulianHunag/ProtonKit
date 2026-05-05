@@ -164,13 +164,17 @@ public enum MessageAPI {
                 (name: "Filename", value: fileName),
                 (name: "MIMEType", value: mimeType),
                 (name: "MessageID", value: messageID),
-                (name: "KeyPackets", value: keyPackets.base64EncodedString()),
             ],
-            fileField: "DataPacket",
-            fileName: fileName,
-            mimeType: "application/octet-stream",
-            fileData: dataPacket
+            files: [
+                (name: "KeyPackets", fileName: "KeyPackets.pgp", mimeType: "application/octet-stream", data: keyPackets),
+                (name: "DataPacket", fileName: "DataPacket.pgp", mimeType: "application/octet-stream", data: dataPacket),
+            ]
         )
+    }
+
+    public static func deleteAttachment(client: ProtonClient, attachmentID: String) async throws {
+        struct Resp: Decodable { let Code: Int }
+        let _: Resp = try await client.delete(path: "mail/v4/attachments/\(attachmentID)")
     }
 
     public static func trash(client: ProtonClient, messageIDs: [String]) async throws {

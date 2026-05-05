@@ -42,6 +42,14 @@ struct ComposeAttachment: Identifiable {
     }
 }
 
+struct DraftAttachment: Identifiable {
+    let id: String
+    let fileName: String
+    let size: Int
+    let mimeType: String
+    let keyPackets: String?
+}
+
 @MainActor
 final class ComposeViewModel: ObservableObject {
     @Published var toText = ""
@@ -49,6 +57,7 @@ final class ComposeViewModel: ObservableObject {
     @Published var subject = ""
     @Published var bodyText = ""
     @Published var attachments: [ComposeAttachment] = []
+    @Published var existingAttachments: [DraftAttachment] = []
     @Published var isSending = false
     @Published var isSavingDraft = false
     @Published var errorMessage: String?
@@ -96,6 +105,9 @@ final class ComposeViewModel: ObservableObject {
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject
             self.bodyText = Self.htmlToPlainText(decryptedHTML)
+            self.existingAttachments = msg.attachments.map {
+                DraftAttachment(id: $0.id, fileName: $0.name, size: $0.size, mimeType: $0.mimeType, keyPackets: $0.keyPackets)
+            }
         }
     }
 
@@ -238,26 +250,48 @@ final class ComposeViewModel: ObservableObject {
                 draftID = resp.message.id
             }
 
-            // Encrypt and upload attachments, collecting (attachmentID, sessionKey) pairs
             var uploadedAttachments: [(id: String, sessionKey: Data)] = []
-            if !attachments.isEmpty {
+            let hasAttachments = !attachments.isEmpty || !existingAttachments.isEmpty
+
+            if hasAttachments {
                 let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
                 guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
                     throw EncryptionError.encryptionFailed("No sender public key for attachment encryption")
                 }
+
+                // Re-process existing draft attachments to obtain session keys
+                for existing in existingAttachments {
+                    guard let kpBase64 = existing.keyPackets,
+                          let keyPacketData = Data(base64Encoded: kpBase64) else { continue }
+                    let encryptedData = try await MessageAPI.downloadAttachment(
+                        client: session.client, attachmentID: existing.id
+                    )
+                    let plaintext = try session.decryptor.decryptAttachment(
+                        keyPackets: keyPacketData, dataPackets: encryptedData
+                    )
+                    let reEncrypted = try AttachmentCrypto.encrypt(data: plaintext)
+                    let newKeyPacket = try AttachmentCrypto.buildKeyPacket(
+                        sessionKey: reEncrypted.sessionKey, armoredPublicKey: senderPubKey
+                    )
+                    try await MessageAPI.deleteAttachment(client: session.client, attachmentID: existing.id)
+                    let resp = try await MessageAPI.uploadAttachment(
+                        client: session.client, messageID: draftID,
+                        fileName: existing.fileName, mimeType: existing.mimeType,
+                        keyPackets: newKeyPacket, dataPacket: reEncrypted.dataPacket
+                    )
+                    uploadedAttachments.append((id: resp.attachment.id, sessionKey: reEncrypted.sessionKey))
+                }
+
+                // Upload new local attachments
                 for att in attachments {
                     let encrypted = try AttachmentCrypto.encrypt(data: att.data)
                     let keyPacket = try AttachmentCrypto.buildKeyPacket(
-                        sessionKey: encrypted.sessionKey,
-                        armoredPublicKey: senderPubKey
+                        sessionKey: encrypted.sessionKey, armoredPublicKey: senderPubKey
                     )
                     let resp = try await MessageAPI.uploadAttachment(
-                        client: session.client,
-                        messageID: draftID,
-                        fileName: att.fileName,
-                        mimeType: att.mimeType,
-                        keyPackets: keyPacket,
-                        dataPacket: encrypted.dataPacket
+                        client: session.client, messageID: draftID,
+                        fileName: att.fileName, mimeType: att.mimeType,
+                        keyPackets: keyPacket, dataPacket: encrypted.dataPacket
                     )
                     uploadedAttachments.append((id: resp.attachment.id, sessionKey: encrypted.sessionKey))
                 }
