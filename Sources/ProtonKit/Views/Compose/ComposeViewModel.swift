@@ -72,7 +72,6 @@ final class ComposeViewModel: ObservableObject {
     let mode: ComposeMode
     private let originalMessage: FullMessage?
     private let existingDraftID: String?
-    private let forwardedHTML: String?
 
     init(mode: ComposeMode) {
         self.mode = mode
@@ -80,36 +79,31 @@ final class ComposeViewModel: ObservableObject {
         case .reply(let msg):
             self.originalMessage = msg
             self.existingDraftID = nil
-            self.forwardedHTML = nil
             self.toText = msg.senderAddress
             self.subject = msg.subject.hasPrefix("Re: ") ? msg.subject : "Re: \(msg.subject)"
-            self.bodyText = Self.buildQuotedBody(msg)
+            self.bodyText = Self.buildQuotedBodyHTML(msg)
         case .replyAll(let msg):
             self.originalMessage = msg
             self.existingDraftID = nil
-            self.forwardedHTML = nil
             self.toText = msg.senderAddress
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject.hasPrefix("Re: ") ? msg.subject : "Re: \(msg.subject)"
-            self.bodyText = Self.buildQuotedBody(msg)
+            self.bodyText = Self.buildQuotedBodyHTML(msg)
         case .forward(let msg, let decryptedHTML):
             self.originalMessage = msg
             self.existingDraftID = nil
-            self.forwardedHTML = decryptedHTML
             self.subject = msg.subject.hasPrefix("Fwd: ") ? msg.subject : "Fwd: \(msg.subject)"
-            self.bodyText = Self.buildForwardHeader(msg)
+            self.bodyText = Self.buildForwardHeaderHTML(msg) + Self.extractBodyContent(decryptedHTML)
         case .newMessage:
             self.originalMessage = nil
             self.existingDraftID = nil
-            self.forwardedHTML = nil
         case .editDraft(let msg, let decryptedHTML):
             self.originalMessage = msg
             self.existingDraftID = msg.id
-            self.forwardedHTML = nil
             self.toText = msg.toList.map(\.address).joined(separator: ", ")
             self.ccText = msg.ccList.map(\.address).joined(separator: ", ")
             self.subject = msg.subject
-            self.bodyText = Self.htmlToPlainText(decryptedHTML)
+            self.bodyText = Self.extractBodyContent(decryptedHTML)
             self.existingAttachments = msg.attachments.map {
                 DraftAttachment(id: $0.id, fileName: $0.name, size: $0.size, mimeType: $0.mimeType, keyPackets: $0.keyPackets)
             }
@@ -397,19 +391,7 @@ final class ComposeViewModel: ObservableObject {
     }
 
     private func encryptBody(session: SessionManager, address: ProtonAddress) async throws -> (encryptedBody: String, wrappedBody: String) {
-        let htmlBody = bodyText
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\n", with: "<br>")
-
-        let wrappedBody: String
-        if let fwdHTML = forwardedHTML {
-            let originalBody = Self.extractBodyContent(fwdHTML)
-            wrappedBody = "<html><body>\(htmlBody)<br><div>\(originalBody)</div></body></html>"
-        } else {
-            wrappedBody = "<html><body>\(htmlBody)</body></html>"
-        }
+        let wrappedBody = "<html><body>\(bodyText)</body></html>"
 
         let senderKeyResp = try await KeyAPI.getPublicKeys(client: session.client, email: address.email)
         guard let senderPubKey = senderKeyResp.keys.first?.publicKey, !senderPubKey.isEmpty else {
@@ -442,23 +424,25 @@ final class ComposeViewModel: ObservableObject {
             .map { EmailAddress(address: String($0)) }
     }
 
-    private static func buildQuotedBody(_ msg: FullMessage) -> String {
+    private static func buildQuotedBodyHTML(_ msg: FullMessage) -> String {
         let date = Date(timeIntervalSince1970: msg.time)
             .formatted(.dateTime.year().month().day().hour().minute())
-        return "\n\n--- On \(date), \(msg.senderName) wrote ---\n"
+        return "<br><br><div style=\"color:#999;font-size:13px;\">--- On \(date), \(msg.senderName) wrote ---</div>"
     }
 
-    private static func buildForwardHeader(_ msg: FullMessage) -> String {
+    private static func buildForwardHeaderHTML(_ msg: FullMessage) -> String {
         let date = Date(timeIntervalSince1970: msg.time)
             .formatted(.dateTime.year().month().day().hour().minute())
-        var header = "\n\n---------- Forwarded message ----------\n"
-        header += "From: \(msg.senderName) <\(msg.senderAddress)>\n"
-        header += "Date: \(date)\n"
-        header += "Subject: \(msg.subject)\n"
+        var h = "<br><br><div style=\"color:#999;font-size:13px;\">"
+        h += "---------- Forwarded message ----------<br>"
+        h += "From: \(msg.senderName) &lt;\(msg.senderAddress)&gt;<br>"
+        h += "Date: \(date)<br>"
+        h += "Subject: \(msg.subject)<br>"
         if !msg.toList.isEmpty {
-            header += "To: \(msg.toList.map(\.address).joined(separator: ", "))\n"
+            h += "To: \(msg.toList.map(\.address).joined(separator: ", "))<br>"
         }
-        return header
+        h += "</div><br>"
+        return h
     }
 
     private static func extractBodyContent(_ html: String) -> String {
@@ -470,40 +454,4 @@ final class ComposeViewModel: ObservableObject {
         return html
     }
 
-    private static func htmlToPlainText(_ html: String) -> String {
-        var text = html
-        if let bodyStart = text.range(of: "<body", options: .caseInsensitive),
-           let bodyTagEnd = text[bodyStart.upperBound...].range(of: ">"),
-           let bodyEnd = text.range(of: "</body>", options: .caseInsensitive) {
-            text = String(text[bodyTagEnd.upperBound..<bodyEnd.lowerBound])
-        }
-        while let s = text.range(of: "<style", options: .caseInsensitive),
-              let e = text.range(of: "</style>", options: .caseInsensitive, range: s.lowerBound..<text.endIndex) {
-            text.removeSubrange(s.lowerBound..<e.upperBound)
-        }
-        while let s = text.range(of: "<script", options: .caseInsensitive),
-              let e = text.range(of: "</script>", options: .caseInsensitive, range: s.lowerBound..<text.endIndex) {
-            text.removeSubrange(s.lowerBound..<e.upperBound)
-        }
-        for tag in ["<br>", "<br/>", "<br />"] {
-            text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
-        }
-        for tag in ["</p>", "</div>", "</tr>", "</li>", "</h1>", "</h2>", "</h3>", "</td>"] {
-            text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
-        }
-        while let tagStart = text.range(of: "<"),
-              let tagEnd = text.range(of: ">", range: tagStart.lowerBound..<text.endIndex) {
-            text.removeSubrange(tagStart.lowerBound...tagEnd.lowerBound)
-        }
-        text = text.replacingOccurrences(of: "&nbsp;", with: " ")
-        text = text.replacingOccurrences(of: "&lt;", with: "<")
-        text = text.replacingOccurrences(of: "&gt;", with: ">")
-        text = text.replacingOccurrences(of: "&amp;", with: "&")
-        text = text.replacingOccurrences(of: "&quot;", with: "\"")
-        text = text.replacingOccurrences(of: "&#39;", with: "'")
-        while text.contains("\n\n\n") {
-            text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n")
-        }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }

@@ -5,14 +5,16 @@ import ProtonCore
 struct ComposeView: View {
     @EnvironmentObject var session: SessionManager
     @StateObject var vm: ComposeViewModel
+    @StateObject private var editorActions = RichTextActions()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
             headerFields
             Divider()
-            TextEditor(text: $vm.bodyText)
-                .font(.body)
+            formattingToolbar
+            Divider()
+            RichTextEditor(html: $vm.bodyText, actions: editorActions)
                 .frame(minHeight: 200)
 
             if !vm.existingAttachments.isEmpty || !vm.attachments.isEmpty {
@@ -87,6 +89,21 @@ struct ComposeView: View {
         if bytes < 1024 { return "\(bytes) B" }
         if bytes < 1024 * 1024 { return "\(bytes / 1024) KB" }
         return String(format: "%.1f MB", Double(bytes) / 1_048_576)
+    }
+
+    private var formattingToolbar: some View {
+        HStack(spacing: 4) {
+            Button(action: editorActions.bold) { Image(systemName: "bold") }
+            Button(action: editorActions.italic) { Image(systemName: "italic") }
+            Button(action: editorActions.underline) { Image(systemName: "underline") }
+            Divider().frame(height: 16)
+            Button(action: editorActions.unorderedList) { Image(systemName: "list.bullet") }
+            Button(action: editorActions.orderedList) { Image(systemName: "list.number") }
+            Spacer()
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     private var headerFields: some View {
