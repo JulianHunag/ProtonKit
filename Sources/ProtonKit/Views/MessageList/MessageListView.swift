@@ -3,8 +3,9 @@ import ProtonCore
 
 struct MessageListView: View {
     @ObservedObject var viewModel: MessageListViewModel
-    @Binding var selectedMessageID: String?
+    @Binding var selectedMessageIDs: Set<String>
     var onTrash: ((String) -> Void)?
+    var onTrashSelected: (() -> Void)?
     var onToggleUnread: ((String) -> Void)?
     var onReply: ((String) -> Void)?
     var onReplyAll: ((String) -> Void)?
@@ -22,11 +23,13 @@ struct MessageListView: View {
                     description: Text("This folder is empty")
                 )
             } else {
-                List(selection: $selectedMessageID) {
+                List(selection: $selectedMessageIDs) {
                     ForEach(viewModel.messages) { msg in
                         MessageRowView(
                             message: msg,
+                            isMultiSelected: selectedMessageIDs.count > 1 && selectedMessageIDs.contains(msg.id),
                             onTrash: { onTrash?(msg.id) },
+                            onTrashSelected: { onTrashSelected?() },
                             onToggleUnread: { onToggleUnread?(msg.id) },
                             onReply: { onReply?(msg.id) },
                             onReplyAll: { onReplyAll?(msg.id) },

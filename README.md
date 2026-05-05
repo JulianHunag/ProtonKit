@@ -17,6 +17,7 @@ ProtonKit directly interfaces with the Proton REST API, implementing SRP-6a auth
 - **Infinite Scroll** - Paginated message loading (50 per page)
 - **HTML Rendering** - WKWebView with sanitization, auto-height, link interception
 - **Delete / Mark Unread** - Trash messages, toggle read/unread via context menu, swipe, toolbar, or keyboard
+- **Batch Select & Delete** - Cmd+Click / Shift+Click multi-select with batch trash (toolbar, keyboard, or context menu)
 - **Attachment Download** - Download and decrypt PGP-encrypted attachments with save dialog
 - **Attachment Upload** - PGP-encrypted attachment upload with per-recipient session key management (RSA + ECDH)
 - **Search** - Keyword search across messages via Proton API

@@ -6,7 +6,7 @@ struct MailView: View {
     @EnvironmentObject var notificationService: NotificationService
     @StateObject private var sidebarVM = SidebarViewModel()
     @StateObject private var messageListVM = MessageListViewModel()
-    @State private var selectedMessageID: String?
+    @State private var selectedMessageIDs: Set<String> = []
     @State private var searchText = ""
     @State private var composeMode: ComposeMode?
 
@@ -19,8 +19,9 @@ struct MailView: View {
         } content: {
             MessageListView(
                 viewModel: messageListVM,
-                selectedMessageID: $selectedMessageID,
+                selectedMessageIDs: $selectedMessageIDs,
                 onTrash: { id in Task { await trashMessage(id: id) } },
+                onTrashSelected: { Task { await trashSelectedMessages() } },
                 onToggleUnread: { id in Task { await toggleUnread(id: id) } },
                 onReply: { id in Task { await openCompose(id: id, action: .reply) } },
                 onReplyAll: { id in Task { await openCompose(id: id, action: .replyAll) } },
@@ -28,9 +29,15 @@ struct MailView: View {
             )
             .navigationSplitViewColumnWidth(min: 280, ideal: 350, max: 500)
         } detail: {
-            if let id = selectedMessageID {
+            if selectedMessageIDs.count == 1, let id = selectedMessageIDs.first {
                 MessageDetailView(messageID: id)
                     .id(id)
+            } else if selectedMessageIDs.count > 1 {
+                ContentUnavailableView(
+                    "\(selectedMessageIDs.count) Messages Selected",
+                    systemImage: "envelope.multiple",
+                    description: Text("Press Delete to move them to Trash")
+                )
             } else {
                 ContentUnavailableView(
                     "No Message Selected",
@@ -52,23 +59,23 @@ struct MailView: View {
                 .keyboardShortcut("r", modifiers: .command)
 
                 Button(action: {
-                    guard let id = selectedMessageID else { return }
+                    guard selectedMessageIDs.count == 1, let id = selectedMessageIDs.first else { return }
                     Task { await toggleUnread(id: id) }
                 }) {
                     Image(systemName: "envelope.badge")
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
-                .disabled(selectedMessageID == nil)
+                .disabled(selectedMessageIDs.count != 1)
                 .help("Toggle Read/Unread")
 
                 Button(role: .destructive, action: {
-                    guard let id = selectedMessageID else { return }
-                    Task { await trashMessage(id: id) }
+                    guard !selectedMessageIDs.isEmpty else { return }
+                    Task { await trashSelectedMessages() }
                 }) {
                     Image(systemName: "trash")
                 }
                 .keyboardShortcut(.delete, modifiers: [])
-                .disabled(selectedMessageID == nil)
+                .disabled(selectedMessageIDs.isEmpty)
                 .help("Move to Trash")
 
                 accountMenu
@@ -95,11 +102,11 @@ struct MailView: View {
                 sidebarVM.selection = SidebarSelection(accountUID: nav.accountUID, labelID: "0")
                 notificationService.pendingNavigation = nil
                 await messageListVM.load(client: session.client, labelID: "0")
-                selectedMessageID = nav.messageID
+                selectedMessageIDs = [nav.messageID]
             }
         }
-        .onChange(of: selectedMessageID) { _, newID in
-            guard let newID else { return }
+        .onChange(of: selectedMessageIDs) { _, newIDs in
+            guard newIDs.count == 1, let newID = newIDs.first else { return }
             guard let msg = messageListVM.messages.first(where: { $0.id == newID }),
                   msg.unread == 1,
                   let sel = sidebarVM.selection else { return }
@@ -116,7 +123,7 @@ struct MailView: View {
                 session.accountStore.setActive(uid: sel.accountUID)
             }
 
-            selectedMessageID = nil
+            selectedMessageIDs = []
             Task {
                 await messageListVM.load(client: session.client, labelID: sel.labelID)
                 if let account = session.accountStore.activeAccount {
@@ -139,7 +146,7 @@ struct MailView: View {
             Task {
                 await sidebarVM.load(accounts: session.accountStore.accounts)
                 await messageListVM.load(client: session.client, labelID: "0")
-                selectedMessageID = nav.messageID
+                selectedMessageIDs = [nav.messageID]
             }
         }
         .sheet(item: $composeMode) { mode in
@@ -148,7 +155,7 @@ struct MailView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .composeSendCompleted)) { notification in
             if let draftID = notification.object as? String {
-                if selectedMessageID == draftID { selectedMessageID = nil }
+                selectedMessageIDs.remove(draftID)
                 Task { await reloadUntilGone(messageID: draftID) }
             } else if let sel = sidebarVM.selection {
                 Task { await messageListVM.load(client: session.client, labelID: sel.labelID) }
@@ -218,7 +225,7 @@ struct MailView: View {
     private func trashMessage(id: String) async {
         guard let sel = sidebarVM.selection else { return }
         let msg = messageListVM.messages.first { $0.id == id }
-        if id == selectedMessageID { selectedMessageID = nil }
+        selectedMessageIDs.remove(id)
         await messageListVM.trashMessages(client: session.client, ids: [id])
         if let msg, msg.unread == 1 {
             for labelID in msg.labelIDs {
@@ -226,6 +233,20 @@ struct MailView: View {
             }
             updateDockBadge()
         }
+    }
+
+    private func trashSelectedMessages() async {
+        guard let sel = sidebarVM.selection else { return }
+        let ids = Array(selectedMessageIDs)
+        let msgs = messageListVM.messages.filter { ids.contains($0.id) }
+        selectedMessageIDs = []
+        await messageListVM.trashMessages(client: session.client, ids: ids)
+        for msg in msgs where msg.unread == 1 {
+            for labelID in msg.labelIDs {
+                sidebarVM.decrementUnread(accountUID: sel.accountUID, labelID: labelID)
+            }
+        }
+        updateDockBadge()
     }
 
     private func toggleUnread(id: String) async {

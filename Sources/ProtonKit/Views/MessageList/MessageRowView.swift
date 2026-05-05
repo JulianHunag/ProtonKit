@@ -3,7 +3,9 @@ import ProtonCore
 
 struct MessageRowView: View {
     let message: MessageMetadata
+    var isMultiSelected = false
     var onTrash: (() -> Void)?
+    var onTrashSelected: (() -> Void)?
     var onToggleUnread: (() -> Void)?
     var onReply: (() -> Void)?
     var onReplyAll: (() -> Void)?
@@ -54,16 +56,18 @@ struct MessageRowView: View {
         }
         .padding(.vertical, 4)
         .contextMenu {
-            Button(action: { onReply?() }) {
-                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            if !isMultiSelected {
+                Button(action: { onReply?() }) {
+                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+                Button(action: { onReplyAll?() }) {
+                    Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
+                }
+                Button(action: { onForward?() }) {
+                    Label("Forward", systemImage: "arrowshape.turn.up.right")
+                }
+                Divider()
             }
-            Button(action: { onReplyAll?() }) {
-                Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
-            }
-            Button(action: { onForward?() }) {
-                Label("Forward", systemImage: "arrowshape.turn.up.right")
-            }
-            Divider()
             Button(action: { onToggleUnread?() }) {
                 Label(
                     message.unread == 1 ? "Mark as Read" : "Mark as Unread",
@@ -71,7 +75,9 @@ struct MessageRowView: View {
                 )
             }
             Divider()
-            Button(role: .destructive, action: { onTrash?() }) {
+            Button(role: .destructive, action: {
+                if isMultiSelected { onTrashSelected?() } else { onTrash?() }
+            }) {
                 Label("Move to Trash", systemImage: "trash")
             }
         }
