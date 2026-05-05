@@ -83,7 +83,7 @@ final class ComposeViewModel: ObservableObject {
             self.existingDraftID = nil
             self.forwardedHTML = decryptedHTML
             self.subject = msg.subject.hasPrefix("Fwd: ") ? msg.subject : "Fwd: \(msg.subject)"
-            self.bodyText = Self.buildForwardHeader(msg)
+            self.bodyText = Self.buildForwardHeader(msg) + "\n" + Self.htmlToPlainText(decryptedHTML)
         case .newMessage:
             self.originalMessage = nil
             self.existingDraftID = nil
@@ -431,16 +431,38 @@ final class ComposeViewModel: ObservableObject {
 
     private static func htmlToPlainText(_ html: String) -> String {
         var text = html
-        if let bodyStart = text.range(of: "<body>"),
-           let bodyEnd = text.range(of: "</body>") {
-            text = String(text[bodyStart.upperBound..<bodyEnd.lowerBound])
+        if let bodyStart = text.range(of: "<body", options: .caseInsensitive),
+           let bodyTagEnd = text[bodyStart.upperBound...].range(of: ">"),
+           let bodyEnd = text.range(of: "</body>", options: .caseInsensitive) {
+            text = String(text[bodyTagEnd.upperBound..<bodyEnd.lowerBound])
         }
-        text = text.replacingOccurrences(of: "<br>", with: "\n")
-        text = text.replacingOccurrences(of: "<br/>", with: "\n")
-        text = text.replacingOccurrences(of: "<br />", with: "\n")
+        while let s = text.range(of: "<style", options: .caseInsensitive),
+              let e = text.range(of: "</style>", options: .caseInsensitive, range: s.lowerBound..<text.endIndex) {
+            text.removeSubrange(s.lowerBound..<e.upperBound)
+        }
+        while let s = text.range(of: "<script", options: .caseInsensitive),
+              let e = text.range(of: "</script>", options: .caseInsensitive, range: s.lowerBound..<text.endIndex) {
+            text.removeSubrange(s.lowerBound..<e.upperBound)
+        }
+        for tag in ["<br>", "<br/>", "<br />"] {
+            text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
+        }
+        for tag in ["</p>", "</div>", "</tr>", "</li>", "</h1>", "</h2>", "</h3>", "</td>"] {
+            text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
+        }
+        while let tagStart = text.range(of: "<"),
+              let tagEnd = text.range(of: ">", range: tagStart.lowerBound..<text.endIndex) {
+            text.removeSubrange(tagStart.lowerBound...tagEnd.lowerBound)
+        }
+        text = text.replacingOccurrences(of: "&nbsp;", with: " ")
         text = text.replacingOccurrences(of: "&lt;", with: "<")
         text = text.replacingOccurrences(of: "&gt;", with: ">")
         text = text.replacingOccurrences(of: "&amp;", with: "&")
-        return text
+        text = text.replacingOccurrences(of: "&quot;", with: "\"")
+        text = text.replacingOccurrences(of: "&#39;", with: "'")
+        while text.contains("\n\n\n") {
+            text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n")
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
