@@ -1,6 +1,11 @@
 import SwiftUI
 import ProtonCore
 
+extension Notification.Name {
+    static let composeSendCompleted = Notification.Name("composeSendCompleted")
+    static let composeDraftSaved = Notification.Name("composeDraftSaved")
+}
+
 enum ComposeMode: Identifiable {
     case reply(FullMessage)
     case replyAll(FullMessage)
@@ -193,6 +198,7 @@ final class ComposeViewModel: ObservableObject {
             }
 
             didSaveDraft = true
+            NotificationCenter.default.post(name: .composeDraftSaved, object: nil)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -382,6 +388,7 @@ final class ComposeViewModel: ObservableObject {
             )
 
             didSend = true
+            NotificationCenter.default.post(name: .composeSendCompleted, object: existingDraftID)
         } catch {
             errorMessage = error.localizedDescription
         }

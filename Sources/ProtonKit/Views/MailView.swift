@@ -146,6 +146,19 @@ struct MailView: View {
             ComposeView(vm: ComposeViewModel(mode: mode))
                 .environmentObject(session)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .composeSendCompleted)) { notification in
+            if let draftID = notification.object as? String {
+                if selectedMessageID == draftID { selectedMessageID = nil }
+                Task { await reloadUntilGone(messageID: draftID) }
+            } else if let sel = sidebarVM.selection {
+                Task { await messageListVM.load(client: session.client, labelID: sel.labelID) }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .composeDraftSaved)) { _ in
+            if let sel = sidebarVM.selection {
+                Task { await messageListVM.load(client: session.client, labelID: sel.labelID) }
+            }
+        }
     }
 
     private var accountMenu: some View {
@@ -247,6 +260,15 @@ struct MailView: View {
             }
         } catch {
             ProtonClient.debugLog("openCompose failed: \(error)")
+        }
+    }
+
+    private func reloadUntilGone(messageID: String) async {
+        guard let sel = sidebarVM.selection else { return }
+        for delay in [0.5, 1.0, 2.0] {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            await messageListVM.load(client: session.client, labelID: sel.labelID)
+            if !messageListVM.messages.contains(where: { $0.id == messageID }) { return }
         }
     }
 
