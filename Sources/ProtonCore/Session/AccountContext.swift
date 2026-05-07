@@ -24,7 +24,7 @@ public final class AccountContext: Identifiable, ObservableObject {
     public var keyPassphrase: String?
     public var keyPairs: [(armoredKey: String, passphrase: String)] = []
 
-    public var id: String { uid }
+    nonisolated public var id: String { uid }
 
     public var email: String {
         user?.email ?? addresses.first?.email ?? uid
