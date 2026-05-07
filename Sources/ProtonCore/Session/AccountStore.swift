@@ -134,8 +134,10 @@ public final class AccountStore: ObservableObject {
         let addrResp: AddressesResponse = try await context.client.get(path: "core/v4/addresses")
         context.addresses = addrResp.addresses
 
-        if let primaryKey = userResp.user.primaryKey,
-           let salt = saltsResp.keySalts.first(where: { $0.id == primaryKey.id }),
+        let primaryKeyID = userResp.user.primaryKey?.id
+        if userResp.user.primaryKey != nil,
+           let pkID = primaryKeyID,
+           let salt = saltsResp.keySalts.first(where: { $0.id == pkID }),
            let keySalt = salt.keySalt,
            let passphrase = KeyPassphrase.compute(password: password, keySalt: keySalt) {
             context.keyPassphrase = passphrase

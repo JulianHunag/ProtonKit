@@ -1,6 +1,6 @@
 import Foundation
 
-public struct EventResponse: Decodable {
+public struct EventResponse: Decodable, Sendable {
     public let code: Int
     public let eventID: String
     public let more: Int
@@ -16,7 +16,7 @@ public struct EventResponse: Decodable {
     }
 }
 
-public struct MessageEvent: Decodable {
+public struct MessageEvent: Decodable, Sendable {
     public let id: String
     public let action: Int
     public let message: MessageMetadata?
@@ -35,7 +35,7 @@ public struct MessageEvent: Decodable {
     }
 }
 
-public struct LatestEventResponse: Decodable {
+public struct LatestEventResponse: Decodable, Sendable {
     public let code: Int
     public let eventID: String
 

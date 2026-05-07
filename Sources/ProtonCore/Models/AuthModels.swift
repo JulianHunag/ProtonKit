@@ -1,11 +1,11 @@
 import Foundation
 
-public struct AuthInfoRequest: Encodable {
+public struct AuthInfoRequest: Encodable, Sendable {
     public let Username: String
     public init(Username: String) { self.Username = Username }
 }
 
-public struct AuthInfoResponse: Decodable {
+public struct AuthInfoResponse: Decodable, Sendable {
     public let code: Int
     public let modulus: String
     public let serverEphemeral: String
@@ -23,18 +23,18 @@ public struct AuthInfoResponse: Decodable {
     }
 }
 
-public struct AuthRequest: Encodable {
+public struct AuthRequest: Encodable, Sendable {
     public let Username: String
     public let ClientEphemeral: String
     public let ClientProof: String
     public let SRPSession: String
 }
 
-public struct TwoFARequest: Encodable {
+public struct TwoFARequest: Encodable, Sendable {
     public let TwoFactorCode: String
 }
 
-public struct TwoFAResponse: Decodable {
+public struct TwoFAResponse: Decodable, Sendable {
     public let code: Int
 
     enum CodingKeys: String, CodingKey {
@@ -42,7 +42,7 @@ public struct TwoFAResponse: Decodable {
     }
 }
 
-public struct AuthResponse: Decodable {
+public struct AuthResponse: Decodable, Sendable {
     public let code: Int
     public let uid: String
     public let accessToken: String
@@ -52,7 +52,7 @@ public struct AuthResponse: Decodable {
     public let userID: String
     public let twoFactor: TwoFactorInfo?
 
-    public struct TwoFactorInfo: Decodable {
+    public struct TwoFactorInfo: Decodable, Sendable {
         public let enabled: Int
         public let totp: Int?
 
@@ -74,7 +74,7 @@ public struct AuthResponse: Decodable {
     }
 }
 
-struct RefreshRequest: Encodable {
+struct RefreshRequest: Encodable, Sendable {
     let UID: String
     let RefreshToken: String
     let GrantType: String = "refresh_token"
@@ -82,7 +82,7 @@ struct RefreshRequest: Encodable {
     let RedirectURI: String = "https://protonmail.ch"
 }
 
-struct RefreshResponse: Decodable {
+struct RefreshResponse: Decodable, Sendable {
     let code: Int
     let accessToken: String
     let refreshToken: String

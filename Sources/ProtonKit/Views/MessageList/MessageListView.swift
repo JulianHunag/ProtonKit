@@ -113,7 +113,7 @@ struct TableViewDoubleClickHelper: NSViewRepresentable {
             self.onDoubleClick = onDoubleClick
         }
 
-        @objc func handleDoubleClick(_ sender: Any?) {
+        @MainActor @objc func handleDoubleClick(_ sender: Any?) {
             guard let tableView = sender as? NSTableView else { return }
             let row = tableView.clickedRow
             guard row >= 0, row < messageIDs.count else { return }

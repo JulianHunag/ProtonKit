@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ProtonUser: Decodable {
+public struct ProtonUser: Decodable, Sendable {
     public let id: String
     public let name: String?
     public let displayName: String?
@@ -9,7 +9,7 @@ public struct ProtonUser: Decodable {
     public let usedSpace: Int64?
     public let maxSpace: Int64?
 
-    public struct UserKey: Decodable {
+    public struct UserKey: Decodable, Sendable {
         public let id: String
         public let privateKey: String
         public let active: Int
@@ -38,7 +38,7 @@ public struct ProtonUser: Decodable {
     }
 }
 
-public struct UserResponse: Decodable {
+public struct UserResponse: Decodable, Sendable {
     public let code: Int
     public let user: ProtonUser
 
@@ -48,7 +48,7 @@ public struct UserResponse: Decodable {
     }
 }
 
-public struct Salt: Decodable {
+public struct Salt: Decodable, Sendable {
     public let id: String
     public let keySalt: String?
 
@@ -58,7 +58,7 @@ public struct Salt: Decodable {
     }
 }
 
-public struct SaltsResponse: Decodable {
+public struct SaltsResponse: Decodable, Sendable {
     public let code: Int
     public let keySalts: [Salt]
 

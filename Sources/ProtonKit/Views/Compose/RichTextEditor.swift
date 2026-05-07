@@ -1,7 +1,7 @@
 import SwiftUI
 import WebKit
 
-class RichTextActions: ObservableObject {
+@MainActor class RichTextActions: ObservableObject {
     weak var webView: WKWebView?
 
     func bold() { exec("bold") }
@@ -85,7 +85,7 @@ struct RichTextEditor: NSViewRepresentable {
             }
         }
 
-        func webView(_ wv: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        func webView(_ wv: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
             if navigationAction.navigationType == .linkActivated {
                 if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
                 decisionHandler(.cancel)

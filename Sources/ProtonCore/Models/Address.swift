@@ -1,13 +1,13 @@
 import Foundation
 
-public struct ProtonAddress: Decodable {
+public struct ProtonAddress: Decodable, Sendable {
     public let id: String
     public let email: String
     public let status: Int
     public let order: Int
     public let keys: [AddressKey]
 
-    public struct AddressKey: Decodable {
+    public struct AddressKey: Decodable, Sendable {
         public let id: String
         public let privateKey: String
         public let flags: Int
@@ -38,7 +38,7 @@ public struct ProtonAddress: Decodable {
     }
 }
 
-public struct AddressesResponse: Decodable {
+public struct AddressesResponse: Decodable, Sendable {
     public let code: Int
     public let addresses: [ProtonAddress]
 

@@ -87,7 +87,7 @@ struct HumanVerificationView: NSViewRepresentable {
             ProtonClient.debugLog("HV provisional navigation failed: \(error.localizedDescription)")
         }
 
-        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
             if let url = navigationAction.request.url {
                 ProtonClient.debugLog("HV navigating to: \(url.absoluteString)")
             }

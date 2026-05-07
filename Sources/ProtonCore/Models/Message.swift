@@ -1,6 +1,6 @@
 import Foundation
 
-public struct EmailAddress: Codable {
+public struct EmailAddress: Codable, Sendable {
     public let name: String?
     public let address: String
 
@@ -15,7 +15,7 @@ public struct EmailAddress: Codable {
     }
 }
 
-public struct MessageMetadata: Decodable, Identifiable {
+public struct MessageMetadata: Decodable, Identifiable, Sendable {
     public let id: String
     public let subject: String
     public let sender: EmailAddress
@@ -48,7 +48,7 @@ public struct MessageMetadata: Decodable, Identifiable {
     }
 }
 
-public struct FullMessage: Decodable {
+public struct FullMessage: Decodable, Sendable {
     public let id: String
     public let subject: String
     public let sender: EmailAddress
@@ -63,7 +63,7 @@ public struct FullMessage: Decodable {
     public let attachments: [Attachment]
     public let addressID: String
 
-    public struct Attachment: Decodable, Identifiable {
+    public struct Attachment: Decodable, Identifiable, Sendable {
         public let id: String
         public let name: String
         public let size: Int
@@ -101,7 +101,7 @@ public struct FullMessage: Decodable {
 
 // MARK: - Send models
 
-public struct SessionKey: Encodable {
+public struct SessionKey: Encodable, Sendable {
     public let key: String
     public let algorithm: String
 
@@ -116,7 +116,7 @@ public struct SessionKey: Encodable {
     }
 }
 
-public struct SendPackage: Encodable {
+public struct SendPackage: Encodable, Sendable {
     public let addresses: [String: SendAddress]
     public let mimeType: String
     public let body: String
@@ -143,7 +143,7 @@ public struct SendPackage: Encodable {
     }
 }
 
-public struct SendAddress: Encodable {
+public struct SendAddress: Encodable, Sendable {
     public let addressType: Int
     public let bodyKeyPacket: String
     public let signature: Int
@@ -164,7 +164,7 @@ public struct SendAddress: Encodable {
     }
 }
 
-public struct SendResponse: Decodable {
+public struct SendResponse: Decodable, Sendable {
     public let code: Int
     public let sent: FullMessage?
 
@@ -176,7 +176,7 @@ public struct SendResponse: Decodable {
 
 // MARK: - List/Get responses
 
-public struct MessagesResponse: Decodable {
+public struct MessagesResponse: Decodable, Sendable {
     public let code: Int
     public let total: Int
     public let messages: [MessageMetadata]
@@ -188,7 +188,7 @@ public struct MessagesResponse: Decodable {
     }
 }
 
-public struct MessageResponse: Decodable {
+public struct MessageResponse: Decodable, Sendable {
     public let code: Int
     public let message: FullMessage
 
@@ -198,7 +198,7 @@ public struct MessageResponse: Decodable {
     }
 }
 
-public struct AttachmentResponse: Decodable {
+public struct AttachmentResponse: Decodable, Sendable {
     public let code: Int
     public let attachment: AttachmentMeta
 
@@ -207,7 +207,7 @@ public struct AttachmentResponse: Decodable {
         case attachment = "Attachment"
     }
 
-    public struct AttachmentMeta: Decodable {
+    public struct AttachmentMeta: Decodable, Sendable {
         public let id: String
 
         enum CodingKeys: String, CodingKey {

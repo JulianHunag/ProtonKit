@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RecipientKeyResponse: Decodable {
+public struct RecipientKeyResponse: Decodable, Sendable {
     public let code: Int
     public let recipientType: Int
     public let mimeType: String?
@@ -13,7 +13,7 @@ public struct RecipientKeyResponse: Decodable {
         case keys = "Keys"
     }
 
-    public struct RecipientKey: Decodable {
+    public struct RecipientKey: Decodable, Sendable {
         public let flags: Int
         public let publicKey: String
 

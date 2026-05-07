@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ProtonLabel: Decodable, Identifiable {
+public struct ProtonLabel: Decodable, Identifiable, Sendable {
     public let id: String
     public let name: String
     public let type: Int
@@ -16,7 +16,7 @@ public struct ProtonLabel: Decodable, Identifiable {
     }
 }
 
-public struct LabelsResponse: Decodable {
+public struct LabelsResponse: Decodable, Sendable {
     public let code: Int
     public let labels: [ProtonLabel]
 
@@ -26,7 +26,7 @@ public struct LabelsResponse: Decodable {
     }
 }
 
-public struct MessageCount: Decodable {
+public struct MessageCount: Decodable, Sendable {
     public let labelID: String
     public let total: Int
     public let unread: Int
@@ -38,7 +38,7 @@ public struct MessageCount: Decodable {
     }
 }
 
-public struct MessageCountsResponse: Decodable {
+public struct MessageCountsResponse: Decodable, Sendable {
     public let code: Int
     public let counts: [MessageCount]
 

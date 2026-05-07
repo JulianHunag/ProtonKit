@@ -4,7 +4,7 @@ import ProtonCore
 var passed = 0
 var failed = 0
 
-func test(_ name: String, _ body: () throws -> Void) {
+@MainActor func test(_ name: String, _ body: () throws -> Void) {
     do {
         try body()
         print("  ✓ \(name)")
@@ -136,7 +136,7 @@ test("v0 produces 256 bytes") {
 // MARK: - Live API Test (auth/info only, no login)
 print("\n=== Live API Test ===")
 
-func runLiveTest() async {
+@MainActor func runLiveTest() async {
     do {
         let url = URL(string: "https://mail.proton.me/api/auth/info")!
         var req = URLRequest(url: url)
