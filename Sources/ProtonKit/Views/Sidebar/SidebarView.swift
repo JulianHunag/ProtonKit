@@ -4,6 +4,7 @@ import ProtonCore
 struct SidebarView: View {
     @ObservedObject var viewModel: SidebarViewModel
     var onAddAccount: () -> Void
+    var onCompose: () -> Void
 
     var body: some View {
         List(selection: $viewModel.selection) {
@@ -16,28 +17,29 @@ struct SidebarView: View {
                                 if folder.id == "0" && folder.total > 0 {
                                     Text("(\(folder.total))")
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.tertiary)
                                 }
                                 Spacer()
                                 if folder.unread > 0 {
                                     Text("\(folder.unread)")
-                                        .font(.caption2.bold())
+                                        .font(.caption2.weight(.semibold))
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(.purple.opacity(0.15))
-                                        .foregroundStyle(.purple)
+                                        .background(folderColor(folder).opacity(0.15))
+                                        .foregroundStyle(folderColor(folder))
                                         .clipShape(Capsule())
                                 }
                             }
                         } icon: {
                             Image(systemName: folder.icon)
+                                .foregroundStyle(folderColor(folder))
                         }
                         .tag(SidebarSelection(accountUID: section.uid, labelID: folder.id))
                     }
 
                     if !section.customFolders.isEmpty {
                         ForEach(section.customFolders) { folder in
-                            Label(folder.name, systemImage: "folder")
+                            Label(folder.name, systemImage: "folder.fill")
                                 .badge(folder.unread)
                                 .tag(SidebarSelection(accountUID: section.uid, labelID: folder.id))
                         }
@@ -52,14 +54,42 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .top) {
+            Button(action: onCompose) {
+                Label("New Message", systemImage: "square.and.pencil")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 8))
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+        }
         .safeAreaInset(edge: .bottom) {
             Button(action: onAddAccount) {
-                Label("Add Account", systemImage: "plus")
+                Label("Add Account", systemImage: "plus.circle.fill")
+                    .font(.subheadline)
             }
             .buttonStyle(.plain)
+            .foregroundStyle(.blue)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func folderColor(_ folder: FolderItem) -> Color {
+        switch folder.iconColor {
+        case "blue": return .blue
+        case "gray": return .gray
+        case "teal": return .teal
+        case "yellow": return .yellow
+        case "purple": return .purple
+        case "orange": return .orange
+        case "red": return .red
+        default: return .blue
         }
     }
 }
@@ -74,25 +104,25 @@ private struct StorageUsageView: View {
     }
 
     private var barColor: Color {
-        fraction >= 0.9 ? .red : .purple
+        fraction >= 0.9 ? .red : .blue
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.gray.opacity(0.2))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(barColor)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.gray.opacity(0.15))
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(barColor.gradient)
                         .frame(width: geo.size.width * min(fraction, 1.0))
                 }
             }
-            .frame(height: 4)
+            .frame(height: 5)
 
             Text("\(formatBytes(usedSpace)) / \(formatBytes(maxSpace))")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
         }
         .padding(.top, 6)
     }
@@ -112,15 +142,31 @@ private struct AccountSectionHeader: View {
 
     var body: some View {
         if isSingleAccount {
-            Text("Mailbox")
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(section.displayName)
-                    .font(.caption.bold())
-                Text(section.email)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                AvatarView(name: section.displayName, size: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(section.displayName)
+                        .font(.caption.bold())
+                    Text(section.email)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
+            .padding(.vertical, 2)
+        } else {
+            HStack(spacing: 8) {
+                AvatarView(name: section.displayName, size: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(section.displayName)
+                        .font(.caption.bold())
+                    Text(section.email)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.vertical, 2)
         }
     }
 }

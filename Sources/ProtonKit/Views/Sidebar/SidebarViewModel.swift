@@ -5,6 +5,7 @@ struct FolderItem: Identifiable {
     let id: String
     let name: String
     let icon: String
+    var iconColor: String = "gray"
     var unread: Int = 0
     var total: Int = 0
 }
@@ -31,14 +32,14 @@ final class SidebarViewModel: ObservableObject {
     @Published var sections: [AccountSidebarSection] = []
 
     private static let defaultFolders: [FolderItem] = [
-        FolderItem(id: "0", name: "Inbox", icon: "tray"),
-        FolderItem(id: "8", name: "Drafts", icon: "doc"),
-        FolderItem(id: "7", name: "Sent", icon: "paperplane"),
-        FolderItem(id: "10", name: "Starred", icon: "star"),
-        FolderItem(id: "6", name: "Archive", icon: "archivebox"),
-        FolderItem(id: "4", name: "Spam", icon: "xmark.bin"),
-        FolderItem(id: "3", name: "Trash", icon: "trash"),
-        FolderItem(id: "5", name: "All Mail", icon: "tray.2"),
+        FolderItem(id: "0", name: "Inbox", icon: "tray.fill", iconColor: "blue"),
+        FolderItem(id: "8", name: "Drafts", icon: "doc.fill", iconColor: "gray"),
+        FolderItem(id: "7", name: "Sent", icon: "paperplane.fill", iconColor: "teal"),
+        FolderItem(id: "10", name: "Starred", icon: "star.fill", iconColor: "yellow"),
+        FolderItem(id: "6", name: "Archive", icon: "archivebox.fill", iconColor: "purple"),
+        FolderItem(id: "4", name: "Spam", icon: "xmark.bin.fill", iconColor: "orange"),
+        FolderItem(id: "3", name: "Trash", icon: "trash.fill", iconColor: "red"),
+        FolderItem(id: "5", name: "All Mail", icon: "tray.2.fill", iconColor: "gray"),
     ]
 
     func load(accounts: [AccountContext]) async {

@@ -12,47 +12,51 @@ struct MessageRowView: View {
     var onReplyAll: (() -> Void)?
     var onForward: (() -> Void)?
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if message.unread == 1 {
-                Circle()
-                    .fill(.purple)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 6)
-            } else {
-                Circle()
-                    .fill(.clear)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 6)
-            }
+    private var senderDisplay: String {
+        message.senderName.isEmpty ? message.senderAddress : message.senderName
+    }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(message.senderName.isEmpty ? message.senderAddress : message.senderName)
-                        .font(message.unread == 1 ? .body.bold() : .body)
+    private var isUnread: Bool { message.unread == 1 }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            AvatarView(name: senderDisplay, size: 32)
+                .overlay(alignment: .topLeading) {
+                    if isUnread {
+                        Circle()
+                            .fill(.blue)
+                            .frame(width: 10, height: 10)
+                            .overlay(
+                                Circle().stroke(.background, lineWidth: 2)
+                            )
+                            .offset(x: -2, y: -2)
+                    }
+                }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(senderDisplay)
+                        .font(isUnread ? .body.bold() : .body)
+                        .foregroundStyle(isUnread ? .primary : .secondary)
                         .lineLimit(1)
 
                     Spacer()
 
+                    if message.numAttachments > 0 {
+                        Image(systemName: "paperclip")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+
                     Text(formatDate(message.date))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
 
                 Text(message.subject)
                     .font(.subheadline)
-                    .foregroundStyle(message.unread == 1 ? .primary : .secondary)
+                    .foregroundStyle(isUnread ? .primary : .tertiary)
                     .lineLimit(1)
-
-                if message.numAttachments > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "paperclip")
-                            .font(.caption2)
-                        Text("\(message.numAttachments)")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(.secondary)
-                }
             }
         }
         .padding(.vertical, 4)

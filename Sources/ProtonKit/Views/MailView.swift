@@ -14,6 +14,8 @@ struct MailView: View {
         NavigationSplitView {
             SidebarView(viewModel: sidebarVM, onAddAccount: {
                 session.isAddingAccount = true
+            }, onCompose: {
+                composeMode = .newMessage
             })
             .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } content: {
@@ -49,15 +51,34 @@ struct MailView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button(action: { composeMode = .newMessage }) {
-                    Image(systemName: "square.and.pencil")
+                Button(action: {
+                    guard selectedMessageIDs.count == 1, let id = selectedMessageIDs.first else { return }
+                    Task { await openCompose(id: id, action: .reply) }
+                }) {
+                    Image(systemName: "arrowshape.turn.up.left")
                 }
-                .help("New Message")
+                .disabled(selectedMessageIDs.count != 1)
+                .help("Reply")
 
-                Button(action: { Task { await refresh() } }) {
-                    Image(systemName: "arrow.clockwise")
+                Button(action: {
+                    guard selectedMessageIDs.count == 1, let id = selectedMessageIDs.first else { return }
+                    Task { await openCompose(id: id, action: .replyAll) }
+                }) {
+                    Image(systemName: "arrowshape.turn.up.left.2")
                 }
-                .keyboardShortcut("r", modifiers: .command)
+                .disabled(selectedMessageIDs.count != 1)
+                .help("Reply All")
+
+                Button(action: {
+                    guard selectedMessageIDs.count == 1, let id = selectedMessageIDs.first else { return }
+                    Task { await openCompose(id: id, action: .forward) }
+                }) {
+                    Image(systemName: "arrowshape.turn.up.right")
+                }
+                .disabled(selectedMessageIDs.count != 1)
+                .help("Forward")
+
+                Spacer()
 
                 Button(action: {
                     guard selectedMessageIDs.count == 1, let id = selectedMessageIDs.first else { return }
@@ -81,6 +102,11 @@ struct MailView: View {
 
                 accountMenu
             }
+        }
+        .background {
+            Button(action: { Task { await refresh() } }) { EmptyView() }
+                .keyboardShortcut("r", modifiers: .command)
+                .hidden()
         }
         .searchable(text: $searchText, prompt: "Search messages")
         .onSubmit(of: .search) {
