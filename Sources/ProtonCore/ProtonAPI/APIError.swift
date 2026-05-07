@@ -7,6 +7,7 @@ public enum ProtonAPIError: Error, LocalizedError {
     case unauthorized
     case tooManyRequests(retryAfter: Int?)
     case apiError(code: Int, message: String)
+    case humanVerificationRequired(token: String, methods: [String], webUrl: String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ public enum ProtonAPIError: Error, LocalizedError {
             return "Rate limited, retry after \(retry ?? 60)s"
         case .apiError(let code, let msg):
             return "API error \(code): \(msg)"
+        case .humanVerificationRequired:
+            return "Human verification required"
         }
     }
 }

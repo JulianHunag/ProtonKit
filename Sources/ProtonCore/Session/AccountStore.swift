@@ -109,8 +109,11 @@ public final class AccountStore: ObservableObject {
 
     // MARK: - Login
 
-    public func loginNewAccount(username: String, password: String) async throws -> (context: AccountContext, needsTwoFactor: Bool) {
+    public func loginNewAccount(username: String, password: String, hvToken: String? = nil, hvTokenType: String? = nil) async throws -> (context: AccountContext, needsTwoFactor: Bool) {
         let tempClient = ProtonClient()
+        if let hvToken, let hvTokenType {
+            await tempClient.setHumanVerification(token: hvToken, tokenType: hvTokenType)
+        }
         let result = try await AuthAPI.login(client: tempClient, username: username, password: password)
 
         let ctx = AccountContext(uid: result.uid)

@@ -1,11 +1,33 @@
 import Foundation
 
+private struct HVErrorResponse: Decodable {
+    let Code: Int
+    let Details: HVDetails?
+    struct HVDetails: Decodable {
+        let HumanVerificationToken: String
+        let HumanVerificationMethods: [String]
+        let WebUrl: String
+    }
+}
+
 public actor ProtonClient {
-    static let baseURL = URL(string: "https://mail.proton.me/api")!
+    public static let baseURL = URL(string: "https://mail.proton.me/api")!
     private let session: URLSession
     public private(set) var uid: String?
     public private(set) var accessToken: String?
     public private(set) var refreshToken: String?
+    private var hvToken: String?
+    private var hvTokenType: String?
+
+    public func setHumanVerification(token: String, tokenType: String) {
+        self.hvToken = token
+        self.hvTokenType = tokenType
+    }
+
+    public func clearHumanVerification() {
+        self.hvToken = nil
+        self.hvTokenType = nil
+    }
 
     public nonisolated static func debugLog(_ msg: String) {
         #if DEBUG
@@ -99,6 +121,11 @@ public actor ProtonClient {
             req.setValue(uid, forHTTPHeaderField: "x-pm-uid")
         }
 
+        if let hvToken, let hvTokenType {
+            req.setValue(hvToken, forHTTPHeaderField: "x-pm-human-verification-token")
+            req.setValue(hvTokenType, forHTTPHeaderField: "x-pm-human-verification-token-type")
+        }
+
         if let body {
             req.httpBody = try JSONEncoder().encode(body)
         }
@@ -126,6 +153,18 @@ public actor ProtonClient {
         if path.contains("messages") || path.contains("Messages") {
             if let raw = String(data: data.prefix(500), encoding: .utf8) {
                 Self.debugLog("  messages raw: \(raw)")
+            }
+        }
+
+        if httpResp.statusCode == 422 {
+            if let hvError = try? JSONDecoder().decode(HVErrorResponse.self, from: data),
+               hvError.Code == 9001,
+               let details = hvError.Details {
+                throw ProtonAPIError.humanVerificationRequired(
+                    token: details.HumanVerificationToken,
+                    methods: details.HumanVerificationMethods,
+                    webUrl: details.WebUrl
+                )
             }
         }
 

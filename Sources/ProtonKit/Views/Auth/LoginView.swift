@@ -56,6 +56,33 @@ struct LoginView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $vm.showCaptcha) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Human Verification")
+                        .font(.headline)
+                    Spacer()
+                    Button(action: { vm.showCaptcha = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding()
+
+                if let url = vm.captchaURL {
+                    HumanVerificationView(captchaURL: url) { token in
+                        vm.onCaptchaCompleted(token: token, session: session, isAddingAccount: isAddingAccount)
+                    }
+                } else {
+                    Text("Failed to load verification")
+                        .foregroundStyle(.secondary)
+                        .frame(maxHeight: .infinity)
+                }
+            }
+            .frame(width: 600, height: 750)
+        }
     }
 
     private var loginForm: some View {

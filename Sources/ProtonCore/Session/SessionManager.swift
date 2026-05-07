@@ -43,8 +43,8 @@ public final class SessionManager: ObservableObject {
 
     // MARK: - Login
 
-    public func login(username: String, password: String) async throws {
-        let (ctx, needs2FA) = try await accountStore.loginNewAccount(username: username, password: password)
+    public func login(username: String, password: String, hvToken: String? = nil, hvTokenType: String? = nil) async throws {
+        let (ctx, needs2FA) = try await accountStore.loginNewAccount(username: username, password: password, hvToken: hvToken, hvTokenType: hvTokenType)
 
         if needs2FA {
             pendingContext = ctx
